@@ -68,6 +68,15 @@ const WORD_INNER_TABLE_BORDERS = {
   insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
 };
 
+const AI_SETTINGS_STORAGE_KEY = 'manualCreatorAiSettings';
+
+const DEFAULT_AI_SETTINGS = {
+  provider: 'openai',
+  model: '',
+  apiKey: '',
+  saveToDevice: false
+};
+
 const TEXT = {
   ja: {
     title: 'タイトル',
@@ -95,6 +104,12 @@ const TEXT = {
     jsonSave: '編集JSON保存',
     aiContextExport: 'AI用JSON出力',
     aiResultImport: 'AI結果JSON読込',
+    aiSettings: 'AI設定',
+    aiProvider: 'Provider',
+    aiModel: 'Model',
+    aiApiKey: 'API Key',
+    saveApiKey: 'この端末に保存',
+    aiKeyNote: 'APIキーはChrome拡張機能には保存しません。保存を選ばない場合、ページを閉じると消えます。',
     pptExport: 'PowerPoint出力',
     slideOne: '1ステップ/スライド',
     slideTwo: '2ステップ/スライド',
@@ -145,6 +160,12 @@ const TEXT = {
     jsonSave: 'Save JSON',
     aiContextExport: 'Export AI JSON',
     aiResultImport: 'Import AI Result JSON',
+    aiSettings: 'AI Settings',
+    aiProvider: 'Provider',
+    aiModel: 'Model',
+    aiApiKey: 'API Key',
+    saveApiKey: 'Save on this device',
+    aiKeyNote: 'The API key is not stored in the Chrome extension. If not saved, it is cleared when this page is closed.',
     pptExport: 'Export PowerPoint',
     slideOne: '1 step / slide',
     slideTwo: '2 steps / slide',
@@ -178,6 +199,7 @@ function App() {
   const [recordingDataUrls, setRecordingDataUrls] = useState({});
   const [videoStatus, setVideoStatus] = useState('');
   const [slidesPerPage, setSlidesPerPage] = useState(1);
+  const [aiSettings, setAiSettings] = useState(loadAiSettings);
 
   const orderedSteps = useMemo(
     () => project.steps.map((step, index) => ({ ...step, step_no: index + 1 })),
@@ -192,6 +214,14 @@ function App() {
 
   function updateProjectInfo(field, value) {
     setProject((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateAiSettings(patch) {
+    setAiSettings((current) => {
+      const next = { ...current, ...patch };
+      persistAiSettings(next);
+      return next;
+    });
   }
 
   async function importProject(file) {
@@ -547,6 +577,43 @@ function App() {
               onChange={(event) => updateProjectInfo('completion', event.target.value)}
             />
           </label>
+        </section>
+
+        <section className="ai-settings-panel">
+          <div className="section-heading">{text.aiSettings}</div>
+          <label>
+            {text.aiProvider}
+            <select value={aiSettings.provider} onChange={(event) => updateAiSettings({ provider: event.target.value })}>
+              <option value="openai">OpenAI</option>
+              <option value="claude">Claude</option>
+            </select>
+          </label>
+          <label>
+            {text.aiModel}
+            <input
+              value={aiSettings.model}
+              placeholder="model name"
+              onChange={(event) => updateAiSettings({ model: event.target.value })}
+            />
+          </label>
+          <label>
+            {text.aiApiKey}
+            <input
+              type="password"
+              value={aiSettings.apiKey}
+              autoComplete="off"
+              onChange={(event) => updateAiSettings({ apiKey: event.target.value })}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={aiSettings.saveToDevice}
+              onChange={(event) => updateAiSettings({ saveToDevice: event.target.checked })}
+            />
+            <span>{text.saveApiKey}</span>
+          </label>
+          <p className="field-note">{text.aiKeyNote}</p>
         </section>
 
         <section className="import-panel">
@@ -1152,6 +1219,40 @@ function normalizeAiResultSteps(data) {
       check_point: step.check_point || step.checkpoint || ''
     }))
     .filter((step) => step.step_no);
+}
+
+function loadAiSettings() {
+  try {
+    const raw = localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_AI_SETTINGS;
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_AI_SETTINGS,
+      provider: parsed.provider || DEFAULT_AI_SETTINGS.provider,
+      model: parsed.model || '',
+      apiKey: parsed.apiKey || '',
+      saveToDevice: Boolean(parsed.saveToDevice)
+    };
+  } catch {
+    return DEFAULT_AI_SETTINGS;
+  }
+}
+
+function persistAiSettings(settings) {
+  if (!settings.saveToDevice) {
+    localStorage.removeItem(AI_SETTINGS_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(
+    AI_SETTINGS_STORAGE_KEY,
+    JSON.stringify({
+      provider: settings.provider,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      saveToDevice: true
+    })
+  );
 }
 
 function getRecordingFileMap(data) {

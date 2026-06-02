@@ -103,7 +103,8 @@ button:disabled {
   font-weight: 700;
 }
 
-.document-info {
+.document-info,
+.ai-settings-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
   gap: 12px;
@@ -114,7 +115,8 @@ button:disabled {
   background: #ffffff;
 }
 
-.document-info label {
+.document-info label,
+.ai-settings-panel label {
   display: grid;
   gap: 6px;
   color: #475569;
@@ -126,8 +128,53 @@ button:disabled {
   min-height: 72px;
 }
 
-.document-info label {
+.document-info input,
+.document-info select,
+.ai-settings-panel input,
+.ai-settings-panel select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.document-info label,
+.ai-settings-panel label {
   min-width: 0;
+}
+
+.ai-settings-panel {
+  margin-bottom: 14px;
+}
+
+.section-heading {
+  grid-column: 1 / -1;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.checkbox-label {
+  display: flex !important;
+  flex-direction: row;
+  gap: 8px !important;
+  align-items: center;
+  min-height: 40px;
+}
+
+.checkbox-label input {
+  width: 16px;
+  height: 16px;
+}
+
+.field-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .import-status {
@@ -278,7 +325,8 @@ textarea {
 
   .topbar,
   .step-card,
-  .document-info {
+  .document-info,
+  .ai-settings-panel {
     grid-template-columns: 1fr;
   }
 
