@@ -42,10 +42,15 @@ function App() {
     if (!file) return;
     const text = await file.text();
     const data = JSON.parse(text);
-    setProject(normalizeProject(data, 'recording_1'));
+    const normalized = normalizeProject(data, 'recording_1');
+    setProject(normalized);
     setRecordingDataUrl('');
     setRecordingDataUrls({});
-    setVideoStatus(data.capture_mode === 'video' ? '続けてrecording.webmを読み込んでください。' : '');
+    setVideoStatus(
+      normalized.recording_started_at
+        ? `続けて${normalized.recording_file || 'recording-*.webm'}を読み込んでください。`
+        : ''
+    );
   }
 
   async function appendProject(file) {
@@ -346,6 +351,13 @@ function App() {
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     saveAs(blob, `${safeFileName(project.title || 'manual')}.html`);
+    exportProjectJson();
+  }
+
+  function exportProjectJson() {
+    const editableProject = createEditableProject(project, orderedSteps);
+    const blob = new Blob([JSON.stringify(editableProject, null, 2)], { type: 'application/json;charset=utf-8' });
+    saveAs(blob, `${safeFileName(project.title || 'manual')}-project-${createFileStamp()}.json`);
   }
 
   return (
@@ -374,6 +386,9 @@ function App() {
             </button>
             <button type="button" onClick={exportHtml} disabled={orderedSteps.length === 0}>
               HTML出力
+            </button>
+            <button type="button" onClick={exportProjectJson} disabled={orderedSteps.length === 0}>
+              編集JSON保存
             </button>
             <button type="button" onClick={exportPowerPoint} disabled={orderedSteps.length === 0}>
               PowerPoint出力
@@ -520,12 +535,14 @@ function MarkedPreview({ step, image }) {
 }
 
 function normalizeProject(data, recordingId = 'recording_1') {
+  const recordingFileMap = getRecordingFileMap(data);
   const steps = Array.isArray(data.steps)
     ? data.steps.map((step, index) => ({
         ...step,
         step_no: index + 1,
         recording_id: step.recording_id || recordingId,
         recording_started_at: step.recording_started_at || data.recording_started_at || null,
+        recording_file: step.recording_file || recordingFileMap[step.recording_id || recordingId] || data.recording_file || '',
         image: step.image || `step_${String(index + 1).padStart(3, '0')}.png`,
         description: step.description || createDefaultDescription(step)
       }))
@@ -544,6 +561,55 @@ function normalizeProject(data, recordingId = 'recording_1') {
     recording_file: data.recording_file || '',
     steps
   };
+}
+
+function createEditableProject(project, orderedSteps) {
+  const recordings = getRecordingIds(orderedSteps).map((id) => {
+    const step = orderedSteps.find((item) => (item.recording_id || 'recording_1') === id) || {};
+    return {
+      id,
+      file: step.recording_file || (id === 'recording_1' ? project.recording_file : ''),
+      recording_started_at: step.recording_started_at || project.recording_started_at || null
+    };
+  });
+
+  return {
+    schema: 'manual-creator-project',
+    schema_version: 1,
+    saved_at: new Date().toISOString(),
+    title: project.title || DEFAULT_PROJECT.title,
+    purpose: project.purpose || '',
+    audience: project.audience || '',
+    prerequisites: project.prerequisites || '',
+    completion: project.completion || '',
+    capture_mode: project.capture_mode || 'video',
+    recording_started_at: project.recording_started_at || recordings[0]?.recording_started_at || null,
+    recording_file: project.recording_file || recordings[0]?.file || '',
+    recordings,
+    steps: orderedSteps.map((step, index) => ({
+      ...step,
+      step_no: index + 1,
+      recording_id: step.recording_id || 'recording_1',
+      recording_file: step.recording_file || recordings.find((recording) => recording.id === (step.recording_id || 'recording_1'))?.file || '',
+      recording_started_at: step.recording_started_at || project.recording_started_at || null,
+      description: step.description || createDefaultDescription(step)
+    }))
+  };
+}
+
+function getRecordingFileMap(data) {
+  const map = {};
+  if (Array.isArray(data.recordings)) {
+    for (const recording of data.recordings) {
+      if (recording?.id && recording?.file) {
+        map[recording.id] = recording.file;
+      }
+    }
+  }
+  if (data.recording_file) {
+    map.recording_1 = map.recording_1 || data.recording_file;
+  }
+  return map;
 }
 
 function inferProjectInfo(data, steps) {
@@ -922,6 +988,20 @@ function legacyCreateDefaultDescription(step) {
 
 function safeFileName(value) {
   return value.replace(/[\\/:*?"<>|]/g, '_').trim() || 'manual';
+}
+
+function createFileStamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    '-',
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds())
+  ].join('');
 }
 
 function createDefaultDescription(step) {

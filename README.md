@@ -46,6 +46,7 @@ GitHubリポジトリのPages設定は `GitHub Actions` を選択してくださ
 5. GitHub PagesのWebアプリを開き、`events-YYYYMMDD-HHMMSS.json` を読み込みます。
 6. 続けて `recording-YYYYMMDD-HHMMSS.webm` を読み込むと、各クリック時刻のスクリーンショットが自動生成されます。
 7. 説明文を編集し、HTML / Word / PowerPoint を出力します。
+8. HTML出力時には、編集済みの `作業手順書-project-YYYYMMDD-HHMMSS.json` も保存されます。次回編集時はこのJSONを正として読み込んでください。
 
 ## HTML出力
 
@@ -59,6 +60,15 @@ Webアプリの「HTML出力」から、画像と説明文を含む単体HTMLフ
 - SharePoint、Notion、社内Wikiへの貼り付けや配布を想定
 
 GIF変換はブラウザ負荷とファイルサイズが大きいため、現時点では行いません。録画済みの `recording.webm` をHTML内に1回だけ埋め込み、連続操作ブロックごとに再生区間を指定します。
+
+## 編集済みJSON
+
+Webアプリで文言修正、ステップ削除、並び替え、目的、対象者、前提条件、完了条件を編集した後、「編集JSON保存」または「HTML出力」を押すと編集済みJSONを保存できます。
+
+- 編集済みJSONは次回編集時の正本として使います。
+- 画像データと動画データはJSONに埋め込みません。
+- 次回は編集済みJSONを「JSON読込」で読み込み、対応する `recording-*.webm` を「WebM読込」で読み込むと画像を再生成できます。
+- 複数記録を結合している場合も、編集済みJSON内に録画ファイル名の情報を保持します。
 
 ## 説明文生成
 
