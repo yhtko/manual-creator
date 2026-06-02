@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "業務手順書 操作記録",
+  "version": "0.4.0",
+  "description": "画面録画とクリック情報から業務手順書の素材を記録します。",
+  "permissions": ["downloads", "sidePanel", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "手順記録"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
