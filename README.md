@@ -22,11 +22,13 @@ npm run dev
 
 ## GitHub Pages
 
-WebアプリはGitHub Pagesで公開します。
+WebアプリはGitHub Pagesで公開します。ローカルホストは開発時だけ必要です。
 
 ```text
 https://yhtko.github.io/manual-creator/
 ```
+
+GitHubリポジトリのPages設定は `GitHub Actions` を選択してください。`main` ブランチへpushすると、`.github/workflows/pages.yml` が自動でビルドと公開を行います。
 
 ## Chrome 拡張の読み込み
 
@@ -41,8 +43,8 @@ https://yhtko.github.io/manual-creator/
 2. 対象ページでクリック操作を行います。サイドパネルは開いたまま記録を継続できます。
 3. サイドパネルで「記録停止して保存」を押します。
 4. `manual-project/` に `events-YYYYMMDD-HHMMSS.json` と `recording-YYYYMMDD-HHMMSS.webm` がダウンロードされます。
-5. Web アプリで `events.json` を読み込みます。
-6. 続けて `recording.webm` を読み込むと、各クリック時刻のスクリーンショットが自動生成されます。
+5. GitHub PagesのWebアプリを開き、`events-YYYYMMDD-HHMMSS.json` を読み込みます。
+6. 続けて `recording-YYYYMMDD-HHMMSS.webm` を読み込むと、各クリック時刻のスクリーンショットが自動生成されます。
 7. 説明文を編集し、HTML / Word / PowerPoint を出力します。
 
 ## HTML出力
