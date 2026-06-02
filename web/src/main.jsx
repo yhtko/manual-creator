@@ -363,26 +363,11 @@ function App() {
   }
 
   async function exportSharePointZip() {
-    const htmlRecordingDataUrls =
-      Object.keys(recordingDataUrls).length > 0 ? recordingDataUrls : recordingDataUrl ? { recording_1: recordingDataUrl } : {};
     const zip = new JSZip();
-    const assets = zip.folder('assets');
-    const recordingFileNames = {};
-
-    for (const [recordingId, dataUrl] of Object.entries(htmlRecordingDataUrls)) {
-      const step = orderedSteps.find((item) => (item.recording_id || 'recording_1') === recordingId) || {};
-      const fileName = safeAssetFileName(step.recording_file || project.recording_file || `${recordingId}.webm`, `${recordingId}.webm`);
-      recordingFileNames[recordingId] = `assets/${fileName}`;
-      assets.file(fileName, dataUrlToUint8Array(dataUrl));
-    }
-
-    const htmlSteps = await createExternalAssetHtmlSteps(orderedSteps, images, assets, recordingFileNames);
-    const html = createManualHtml(project, orderedSteps, htmlSteps, '');
-    zip.file('index.html', html);
-    zip.file(
-      `${safeFileName(project.title || 'manual')}-project.json`,
-      JSON.stringify(createEditableProject(project, orderedSteps), null, 2)
-    );
+    const packageData = await createSharePointPastePackage(project, orderedSteps, images, zip);
+    zip.file('procedure.json', JSON.stringify(packageData.procedure, null, 2));
+    zip.file('sharepoint_paste.md', packageData.markdown);
+    zip.file('manual_creator_project.json', JSON.stringify(createEditableProject(project, orderedSteps), null, 2));
 
     const blob = await zip.generateAsync({ type: 'blob' });
     saveAs(blob, `${safeFileName(project.title || 'manual')}-sharepoint-${createFileStamp()}.zip`);
@@ -781,6 +766,121 @@ async function addMarkedImageAsset(assetsFolder, step, images, fileName) {
   const safeName = safeAssetFileName(fileName, `step_${String(step.step_no).padStart(3, '0')}.png`);
   assetsFolder.file(safeName, dataUrlToUint8Array(markedImage.dataUrl));
   return `assets/${safeName}`;
+}
+
+async function createSharePointPastePackage(project, steps, images, zip) {
+  const videoRequirements = createVideoRequirementMap(steps);
+  const procedureSteps = [];
+
+  for (const step of steps) {
+    const imageName = `step_${String(step.step_no).padStart(2, '0')}.png`;
+    const videoInfo = videoRequirements.get(step.step_no);
+    const videoName = videoInfo ? `step_${String(step.step_no).padStart(2, '0')}.mp4` : null;
+    const markedImage = await createMarkedImage(step, getStepImage(images, step));
+
+    if (markedImage) {
+      zip.file(imageName, dataUrlToUint8Array(markedImage.dataUrl));
+    }
+
+    procedureSteps.push({
+      step_no: step.step_no,
+      title: getStepTitle(step),
+      description: step.description || createDefaultDescription(step),
+      image: imageName,
+      video: videoName,
+      video_required: Boolean(videoInfo),
+      video_status: videoInfo ? 'needs_mp4_conversion' : 'none',
+      clip_source: videoInfo?.source || null,
+      clip_start_sec: videoInfo ? Number(videoInfo.start.toFixed(2)) : null,
+      clip_end_sec: videoInfo ? Number(videoInfo.end.toFixed(2)) : null,
+      source_element: {
+        tag: step.tag_name || '',
+        text: step.element_text || '',
+        aria_label: step.aria_label || '',
+        selector: step.selector || ''
+      }
+    });
+  }
+
+  const procedure = {
+    title: project.title || DEFAULT_PROJECT.title,
+    category: '事務手順書',
+    created_at: createDateStamp(),
+    purpose: project.purpose || '',
+    audience: project.audience || '',
+    prerequisites: project.prerequisites || '',
+    completion: project.completion || '',
+    notes: [
+      'SharePointページへ貼り付けるための半自動出力です。',
+      'MP4ファイルはブラウザ内では生成しません。video_required=trueの手順はclip_sourceと切り出し時刻を使って別途MP4化してください。'
+    ],
+    steps: procedureSteps
+  };
+
+  return {
+    procedure,
+    markdown: createSharePointPasteMarkdown(procedure)
+  };
+}
+
+function createVideoRequirementMap(steps) {
+  const requirements = new Map();
+  const groups = createHtmlStepGroups(steps);
+
+  for (const group of groups) {
+    if (group.type !== 'video') continue;
+    const first = group.steps[0];
+    const last = group.steps[group.steps.length - 1];
+    const recordingStartedAt = first.recording_started_at;
+    const start = Math.max(0, (Number(first.timestamp_ms) - Number(recordingStartedAt)) / 1000 - 0.35);
+    const end = Math.max(start + 0.8, (Number(last.timestamp_ms) - Number(recordingStartedAt)) / 1000 + 0.75);
+
+    requirements.set(first.step_no, {
+      source: first.recording_file || '',
+      start,
+      end
+    });
+  }
+
+  return requirements;
+}
+
+function createSharePointPasteMarkdown(procedure) {
+  const lines = [
+    `# ${procedure.title}`,
+    '',
+    '## 概要',
+    procedure.purpose || 'このページは、事務作業の手順を説明します。',
+    '',
+    `対象者：${procedure.audience || '-'}`,
+    '',
+    `前提条件：${procedure.prerequisites || '-'}`,
+    '',
+    `完了条件：${procedure.completion || '-'}`,
+    ''
+  ];
+
+  for (const step of procedure.steps) {
+    lines.push(`## 手順${step.step_no}：${step.title}`);
+    lines.push(step.description || '');
+    lines.push('');
+    lines.push(`画像：${step.image}`);
+    if (step.video_required) {
+      lines.push(`動画：${step.video}`);
+      lines.push(`動画切り出し：${step.clip_source || '-'} ${step.clip_start_sec}秒 から ${step.clip_end_sec}秒`);
+    } else {
+      lines.push('動画：なし');
+    }
+    lines.push('');
+  }
+
+  lines.push('## SharePoint配置メモ');
+  lines.push('1. このMarkdown本文をSharePointページへ貼り付けます。');
+  lines.push('2. 各手順の画像ファイルを、該当箇所へ手動で配置します。');
+  lines.push('3. video_required=true の手順だけ、必要に応じてMP4を作成して配置します。');
+  lines.push('');
+
+  return `${lines.join('\n')}\n`;
 }
 
 function createHtmlStepGroups(steps) {
@@ -1192,6 +1292,12 @@ function createFileStamp() {
     pad(now.getMinutes()),
     pad(now.getSeconds())
   ].join('');
+}
+
+function createDateStamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return [now.getFullYear(), pad(now.getMonth() + 1), pad(now.getDate())].join('-');
 }
 
 function createDefaultDescription(step) {

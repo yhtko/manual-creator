@@ -65,15 +65,16 @@ Chrome / Edge の MediaRecorder が出力するMP4は環境によって再生互
 
 ## SharePoint用ZIP出力
 
-SharePointでHTMLプレビューが重い場合や、HTML内に埋め込んだ動画が再生できない場合の検証用に「SharePoint用ZIP」を出力できます。
+SharePointでHTMLファイルを直接動かす方式は採用せず、SharePointページへ貼り付けやすい材料一式として「SharePoint用ZIP」を出力します。
 
-- `index.html` と `assets/` を分けて出力
-- HTML内に画像・動画をbase64埋め込みしない
-- ステップ画像は `assets/step_XXX.png` として保存
-- 連続操作の動画は `assets/recording-*.mp4` または `assets/recording-*.webm` として保存
-- 動画ブロックには静止画ポスターと動画ファイルへのリンクを付与
+- `procedure.json`
+- `sharepoint_paste.md`
+- `manual_creator_project.json`
+- `step_01.png`, `step_02.png` などのクリック位置マーク付き画像
 
-SharePointへアップロードする場合は、ZIPを展開して `index.html` と `assets/` の相対位置を保ったまま同じ場所へ配置してください。SharePointプレビューで動画が再生できない場合でも、静止画ポスターと操作リストで内容を確認できます。
+`sharepoint_paste.md` の本文をSharePointページへ貼り付けた後、画像ファイルを該当箇所へ手動で配置します。短い動画が必要な手順は `procedure.json` の `video_required=true` と切り出し時刻を見て、別途MP4化して配置します。
+
+ブラウザ内MP4変換は重くなるため、初期版では行いません。Chrome / Edge の MediaRecorder が出力するMP4も環境によって再生互換性が低いため、拡張機能の録画はWebMを標準にしています。
 
 ## 編集済みJSON
 
