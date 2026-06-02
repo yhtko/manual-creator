@@ -1166,7 +1166,7 @@ function createAiContextProject(project, orderedSteps, images) {
     schema_version: 1,
     created_at: new Date().toISOString(),
     instruction:
-      'Generate beginner-friendly business procedure explanations using the whole flow, adjacent steps, DOM information, screen titles, click timing, and screenshot references. Return enhanced_description, purpose, and check_point for each step.',
+      'Generate concise office procedure manual text using the whole flow, adjacent steps, DOM information, screen titles, click timing, and screenshot references. Keep each step readable, avoid boilerplate, and return purpose/check_point only when they are useful.',
     output_schema: {
       step_no: 'number',
       title: 'string',
@@ -1338,10 +1338,18 @@ async function callClaude(settings, aiContext) {
 function createAiSystemPrompt(language) {
   const outputLanguage = language === 'en' ? 'English' : 'Japanese';
   return [
-    'You enhance business procedure manual steps for office workers.',
+    'You write concise office procedure manual steps for business users.',
     `Write in ${outputLanguage}.`,
-    'Use the whole workflow, adjacent steps, DOM metadata, screen titles, URL, click timing, and screenshot references.',
-    'Do not invent confidential values. If uncertain, describe the operation generically.',
+    'The goal is readability, not longer explanations.',
+    'Use the whole workflow, adjacent steps, DOM metadata, screen titles, URL, click timing, and screenshot references as context.',
+    'For enhanced_description, write 1-2 short sentences per step by default.',
+    'Write what to do, where to do it, and why, only when the reason is clear from context.',
+    'Do not include URL, page title, screen size, click coordinates, or screenshot references in the user-facing text.',
+    'Do not output boilerplate such as "wait until the screen is fully loaded", "to prevent misclicks", or "refer to the screenshot".',
+    'Set purpose to an empty string for routine navigation or simple clicks. Use purpose only for important business actions.',
+    'Set check_point to an empty string unless the step needs result confirmation, such as save, preview, import, export, submit, register, or delete.',
+    'When consecutive clicks on related input fields are part of one input task, avoid repetitive wording and describe them as an input work sequence where possible.',
+    'Do not over-infer. If uncertain, describe the operation generically and leave purpose/check_point empty.',
     'Return JSON only. Do not wrap in markdown.',
     'Return an object with a steps array. Each item must contain step_no, title, basic_description, enhanced_description, purpose, and check_point.'
   ].join('\n');
@@ -1349,7 +1357,8 @@ function createAiSystemPrompt(language) {
 
 function createAiUserPrompt(aiContext) {
   return [
-    'Generate enhanced procedure descriptions from this context.',
+    'Generate concise procedure descriptions from this context.',
+    'Do not make the manual verbose. Prefer short, practical wording for office work.',
     'The output must be valid JSON only.',
     JSON.stringify(aiContext)
   ].join('\n\n');
