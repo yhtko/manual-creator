@@ -84,12 +84,17 @@ const TEXT = {
     stepList: '手順一覧',
     operationTarget: '操作対象',
     description: '説明文',
+    enhancedDescription: '肉付け説明',
+    operationPurpose: '操作目的',
+    checkPoint: '確認ポイント',
     screen: '画面',
     target: '対象',
     page: 'ページ',
     url: 'URL',
     wordExport: 'Word出力',
     jsonSave: '編集JSON保存',
+    aiContextExport: 'AI用JSON出力',
+    aiResultImport: 'AI結果JSON読込',
     pptExport: 'PowerPoint出力',
     slideOne: '1ステップ/スライド',
     slideTwo: '2ステップ/スライド',
@@ -129,12 +134,17 @@ const TEXT = {
     stepList: 'Procedure List',
     operationTarget: 'Target',
     description: 'Description',
+    enhancedDescription: 'Enhanced Description',
+    operationPurpose: 'Purpose',
+    checkPoint: 'Check Point',
     screen: 'Screen',
     target: 'Target',
     page: 'Page',
     url: 'URL',
     wordExport: 'Export Word',
     jsonSave: 'Save JSON',
+    aiContextExport: 'Export AI JSON',
+    aiResultImport: 'Import AI Result JSON',
     pptExport: 'Export PowerPoint',
     slideOne: '1 step / slide',
     slideTwo: '2 steps / slide',
@@ -186,8 +196,8 @@ function App() {
 
   async function importProject(file) {
     if (!file) return;
-    const text = await file.text();
-    const data = JSON.parse(text);
+    const fileText = await file.text();
+    const data = JSON.parse(fileText);
     const normalized = normalizeProject(data, 'recording_1');
     setProject(normalized);
     setRecordingDataUrl('');
@@ -201,8 +211,8 @@ function App() {
 
   async function appendProject(file) {
     if (!file) return;
-    const text = await file.text();
-    const data = JSON.parse(text);
+    const fileText = await file.text();
+    const data = JSON.parse(fileText);
     const recordingId = `recording_${getRecordingIds(project.steps).length + 1}`;
     const appended = normalizeProject(data, recordingId);
     setProject((current) => ({
@@ -224,6 +234,29 @@ function App() {
       }))
     );
     mergeImages(entries);
+  }
+
+  async function importAiResult(file) {
+    if (!file) return;
+    const fileText = await file.text();
+    const data = JSON.parse(fileText);
+    const aiSteps = normalizeAiResultSteps(data);
+    if (aiSteps.length === 0) return;
+
+    setProject((current) => ({
+      ...current,
+      steps: current.steps.map((step, index) => {
+        const stepNo = step.step_no || index + 1;
+        const aiStep = aiSteps.find((item) => Number(item.step_no) === Number(stepNo));
+        if (!aiStep) return step;
+        return {
+          ...step,
+          enhanced_description: aiStep.enhanced_description || step.enhanced_description || '',
+          purpose: aiStep.purpose || step.purpose || '',
+          check_point: aiStep.check_point || step.check_point || ''
+        };
+      })
+    }));
   }
 
   async function importVideo(file) {
@@ -424,6 +457,12 @@ function App() {
     saveAs(blob, `${safeFileName(project.title || 'manual')}-project-${createFileStamp()}.json`);
   }
 
+  function exportAiContextJson() {
+    const aiContext = createAiContextProject(project, orderedSteps, images);
+    const blob = new Blob([JSON.stringify(aiContext, null, 2)], { type: 'application/json;charset=utf-8' });
+    saveAs(blob, `${safeFileName(project.title || 'manual')}-ai-context-${createFileStamp()}.json`);
+  }
+
   return (
     <main className="app-shell">
       <section className="workspace">
@@ -450,6 +489,9 @@ function App() {
             </button>
             <button type="button" onClick={exportProjectJson} disabled={orderedSteps.length === 0}>
               {text.jsonSave}
+            </button>
+            <button type="button" onClick={exportAiContextJson} disabled={orderedSteps.length === 0}>
+              {text.aiContextExport}
             </button>
             <button type="button" onClick={exportPowerPoint} disabled={orderedSteps.length === 0}>
               {text.pptExport}
@@ -524,6 +566,10 @@ function App() {
             {text.pngImport}
             <input type="file" accept="image/png" multiple onChange={(event) => importImages(event.target.files)} />
           </label>
+          <label>
+            {text.aiResultImport}
+            <input type="file" accept="application/json,.json" onChange={(event) => importAiResult(event.target.files[0])} />
+          </label>
           {videoStatus ? <p className="import-status">{videoStatus}</p> : null}
         </section>
 
@@ -592,6 +638,28 @@ function StepEditor({ step, image, index, total, onUpdate, onDelete, onMove, tex
             value={step.description || ''}
             placeholder={createDefaultDescription(step)}
             onChange={(event) => onUpdate({ description: event.target.value })}
+          />
+        </label>
+        <label className="description-label">
+          {text.enhancedDescription}
+          <textarea
+            value={step.enhanced_description || ''}
+            placeholder={step.description || createDefaultDescription(step)}
+            onChange={(event) => onUpdate({ enhanced_description: event.target.value })}
+          />
+        </label>
+        <label className="description-label">
+          {text.operationPurpose}
+          <textarea
+            value={step.purpose || ''}
+            onChange={(event) => onUpdate({ purpose: event.target.value })}
+          />
+        </label>
+        <label className="description-label">
+          {text.checkPoint}
+          <textarea
+            value={step.check_point || ''}
+            onChange={(event) => onUpdate({ check_point: event.target.value })}
           />
         </label>
       </div>
@@ -700,7 +768,7 @@ function createWordStepListTable(steps, text) {
           children: [
             wordCell(`Step ${step.step_no}`, { width: 10, bold: true, color: '1d4ed8' }),
             wordCell(getStepTitle(step), { width: 32 }),
-            wordCell(step.description || createDefaultDescription(step), { width: 58 })
+            wordCell(getStepNarrative(step), { width: 58 })
           ]
         })
       )
@@ -768,7 +836,13 @@ function createWordStepTable(step, markedImage, text) {
             margins: WORD_CELL_MARGINS,
             children: [
               wordLabel(text.description),
-              wordText(step.description || createDefaultDescription(step), { size: 22 }),
+              wordText(getStepNarrative(step), { size: 22 }),
+              ...(step.purpose
+                ? [spacerParagraph(40), wordLabel(text.operationPurpose), wordText(step.purpose, { size: 20 })]
+                : []),
+              ...(step.check_point
+                ? [spacerParagraph(40), wordLabel(text.checkPoint), wordText(step.check_point, { size: 20 })]
+                : []),
               spacerParagraph(80),
               createWordMetaTable(step, text)
             ]
@@ -879,7 +953,10 @@ function normalizeProject(data, recordingId = 'recording_1') {
         recording_started_at: step.recording_started_at || data.recording_started_at || null,
         recording_file: step.recording_file || recordingFileMap[step.recording_id || recordingId] || data.recording_file || '',
         image: step.image || `step_${String(index + 1).padStart(3, '0')}.png`,
-        description: step.description || createDefaultDescription(step)
+        description: step.description || createDefaultDescription(step),
+        enhanced_description: step.enhanced_description || '',
+        purpose: step.purpose || '',
+        check_point: step.check_point || ''
       }))
     : [];
   const inferredInfo = inferProjectInfo(data, steps);
@@ -933,9 +1010,148 @@ function createEditableProject(project, orderedSteps) {
       recording_id: step.recording_id || 'recording_1',
       recording_file: step.recording_file || recordings.find((recording) => recording.id === (step.recording_id || 'recording_1'))?.file || '',
       recording_started_at: step.recording_started_at || project.recording_started_at || null,
-      description: step.description || createDefaultDescription(step)
+      description: step.description || createDefaultDescription(step),
+      enhanced_description: step.enhanced_description || '',
+      purpose: step.purpose || '',
+      check_point: step.check_point || ''
     }))
   };
+}
+
+function createAiContextProject(project, orderedSteps, images) {
+  const flow = orderedSteps.map((step) => ({
+    step_no: step.step_no,
+    title: getStepTitle(step),
+    basic_description: step.description || createDefaultDescription(step),
+    page_title: step.page_title || '',
+    url: step.url || '',
+    element_text: step.element_text || '',
+    timestamp_ms: step.timestamp_ms || null
+  }));
+
+  return {
+    schema: 'manual-creator-ai-context',
+    schema_version: 1,
+    created_at: new Date().toISOString(),
+    instruction:
+      'Generate beginner-friendly business procedure explanations using the whole flow, adjacent steps, DOM information, screen titles, click timing, and screenshot references. Return enhanced_description, purpose, and check_point for each step.',
+    output_schema: {
+      step_no: 'number',
+      title: 'string',
+      basic_description: 'string',
+      enhanced_description: 'string',
+      purpose: 'string',
+      check_point: 'string'
+    },
+    project: {
+      title: project.title || DEFAULT_PROJECT.title,
+      language: project.language === 'en' ? 'en' : 'ja',
+      created_at: project.created_at || createDateStamp(),
+      author: project.author || '',
+      purpose: project.purpose || '',
+      audience: project.audience || '',
+      prerequisites: project.prerequisites || '',
+      completion: project.completion || '',
+      recording_file: project.recording_file || '',
+      recording_started_at: project.recording_started_at || null
+    },
+    flow,
+    steps: orderedSteps.map((step, index) => {
+      const clip = getStepClipRange(step);
+      const previousStep = orderedSteps[index - 1];
+      const nextStep = orderedSteps[index + 1];
+      return {
+        step_no: step.step_no,
+        title: getStepTitle(step),
+        basic_description: step.description || createDefaultDescription(step),
+        current_enhanced_description: step.enhanced_description || '',
+        current_purpose: step.purpose || '',
+        current_check_point: step.check_point || '',
+        page_title: step.page_title || '',
+        url: step.url || '',
+        screenshot: {
+          image: step.image || '',
+          marked_image: step.image || '',
+          has_loaded_image: Boolean(getStepImage(images, step)),
+          note: 'The web app can generate a marked screenshot from the recording; image binary is not embedded in this JSON.'
+        },
+        click: {
+          x: step.x ?? null,
+          y: step.y ?? null,
+          viewport_width: step.viewport_width ?? null,
+          viewport_height: step.viewport_height ?? null,
+          timestamp_ms: step.timestamp_ms ?? null,
+          captured_at: step.captured_at || ''
+        },
+        video_context: {
+          recording_id: step.recording_id || 'recording_1',
+          recording_file: step.recording_file || project.recording_file || '',
+          clip_start_sec: clip.start,
+          clip_end_sec: clip.end,
+          note: 'Use this 5-10 second range around the click when video context is available.'
+        },
+        source_element: {
+          tag: step.tag_name || '',
+          text: step.element_text || '',
+          aria_label: step.aria_label || '',
+          placeholder: step.placeholder || '',
+          role: step.role || '',
+          column_header: step.column_header || '',
+          selector: step.selector || ''
+        },
+        previous_step: previousStep
+          ? {
+              step_no: previousStep.step_no,
+              title: getStepTitle(previousStep),
+              description: getStepNarrative(previousStep),
+              page_title: previousStep.page_title || ''
+            }
+          : null,
+        next_step: nextStep
+          ? {
+              step_no: nextStep.step_no,
+              title: getStepTitle(nextStep),
+              description: getStepNarrative(nextStep),
+              page_title: nextStep.page_title || ''
+            }
+          : null
+      };
+    })
+  };
+}
+
+function getStepClipRange(step) {
+  const timestamp = Number(step.timestamp_ms);
+  const startedAt = Number(step.recording_started_at);
+  if (!Number.isFinite(timestamp) || !Number.isFinite(startedAt)) {
+    return { start: null, end: null };
+  }
+  const clickSec = Math.max(0, (timestamp - startedAt) / 1000);
+  return {
+    start: Number(Math.max(0, clickSec - 7).toFixed(2)),
+    end: Number((clickSec + 7).toFixed(2))
+  };
+}
+
+function normalizeAiResultSteps(data) {
+  const rawSteps = Array.isArray(data)
+    ? data
+    : Array.isArray(data.steps)
+      ? data.steps
+      : Array.isArray(data.enhanced_steps)
+        ? data.enhanced_steps
+        : data.step_no
+          ? [data]
+          : [];
+
+  return rawSteps
+    .map((step) => ({
+      step_no: step.step_no,
+      enhanced_description: step.enhanced_description || step.description || '',
+      purpose: step.purpose || '',
+      check_point: step.check_point || step.checkpoint || ''
+    }))
+    .filter((step) => step.step_no);
 }
 
 function getRecordingFileMap(data) {
@@ -1543,7 +1759,7 @@ function addPptOverviewSlide(pptx, project, steps, text) {
       fit: 'shrink',
       margin: 0
     });
-    slide.addText(step.description || createDefaultDescription(step), {
+    slide.addText(getStepNarrative(step), {
       x: 4.25,
       y,
       w: 8.0,
@@ -1615,7 +1831,7 @@ function addPptSingleStep(slide, step, markedImage, text) {
     fit: 'shrink',
     margin: 0
   });
-  slide.addText(step.description || createDefaultDescription(step), {
+  slide.addText(getStepNarrative(step), {
     x: 8.45,
     y: 2.28,
     w: 3.95,
@@ -1671,7 +1887,7 @@ function addPptStepCard(slide, step, markedImage, box, text) {
       h: box.imageH
     });
   }
-  slide.addText(step.description || createDefaultDescription(step), {
+  slide.addText(getStepNarrative(step), {
     x: box.x + box.imageW + 0.38,
     y: box.y + 0.5,
     w: box.w - box.imageW - 0.58,
@@ -2015,6 +2231,10 @@ function createDefaultDescription(step) {
   }
 
   return `${label}をクリックします。`;
+}
+
+function getStepNarrative(step) {
+  return step.enhanced_description || step.description || createDefaultDescription(step);
 }
 
 function getStepTitle(step) {
