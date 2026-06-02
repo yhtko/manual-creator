@@ -76,10 +76,11 @@ async function startRecording() {
 async function stopRecording() {
   setBusy(true);
   try {
-    const dataUrl = await stopLocalRecording();
+    const recording = await stopLocalRecording();
     const response = await chrome.runtime.sendMessage({
       type: 'manual-finish-recording',
-      dataUrl
+      dataUrl: recording.dataUrl,
+      mimeType: recording.mimeType
     });
 
     if (!response || !response.ok) {
@@ -108,17 +109,19 @@ function stopLocalRecording() {
   return new Promise((resolve) => {
     if (!mediaRecorder || mediaRecorder.state === 'inactive') {
       cleanupStream();
-      resolve('');
+      resolve({ dataUrl: '', mimeType: '' });
       return;
     }
 
+    const recorderMimeType = mediaRecorder.mimeType || '';
     mediaRecorder.addEventListener(
       'stop',
       async () => {
-        const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+        const mimeType = recorderMimeType || getSupportedMimeType() || 'video/webm';
+        const blob = new Blob(recordedChunks, { type: mimeType });
         const dataUrl = blob.size > 0 ? await blobToDataUrl(blob) : '';
         cleanupStream();
-        resolve(dataUrl);
+        resolve({ dataUrl, mimeType });
       },
       { once: true }
     );
@@ -158,7 +161,14 @@ function validateTab(tab) {
 }
 
 function getSupportedMimeType() {
-  const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const types = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ];
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 

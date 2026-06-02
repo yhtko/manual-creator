@@ -49,7 +49,7 @@ function App() {
     setRecordingDataUrls({});
     setVideoStatus(
       normalized.recording_started_at
-        ? `続けて${normalized.recording_file || 'recording-*.webm'}を読み込んでください。`
+        ? `続けて${normalized.recording_file || 'recording-*.mp4 / recording-*.webm'}を読み込んでください。`
         : ''
     );
   }
@@ -68,7 +68,7 @@ function App() {
       prerequisites: current.prerequisites || appended.prerequisites,
       completion: current.completion || appended.completion
     }));
-    setVideoStatus('追加した記録のrecording.webmを読み込んでください。');
+    setVideoStatus('追加した記録のrecording-*.mp4 または recording-*.webmを読み込んでください。');
   }
 
   async function importImages(fileList) {
@@ -100,6 +100,13 @@ function App() {
       const dataUrl = await fileToDataUrl(file);
       setRecordingDataUrl(dataUrl);
       setRecordingDataUrls((current) => ({ ...current, [targetRecordingId]: dataUrl }));
+      setProject((current) => ({
+        ...current,
+        recording_file: targetRecordingId === 'recording_1' ? file.name : current.recording_file,
+        steps: current.steps.map((step) =>
+          (step.recording_id || 'recording_1') === targetRecordingId ? { ...step, recording_file: file.name } : step
+        )
+      }));
       const entries = await extractStepImagesFromVideo(file, targetSteps, recordingStartedAt);
       mergeImages(entries);
       setVideoStatus(`${entries.length}件の画像を生成しました。`);
@@ -467,8 +474,8 @@ function App() {
             <input type="file" accept="application/json,.json" onChange={(event) => appendProject(event.target.files[0])} />
           </label>
           <label>
-            WebM読込
-            <input type="file" accept="video/webm,.webm" onChange={(event) => importVideo(event.target.files[0])} />
+            動画読込
+            <input type="file" accept="video/webm,video/mp4,.webm,.mp4" onChange={(event) => importVideo(event.target.files[0])} />
           </label>
           <label>
             PNG読込
@@ -479,7 +486,7 @@ function App() {
 
         <section className="steps">
           {orderedSteps.length === 0 ? (
-            <div className="empty">events.json と recording.webm、または従来のJSONとPNGを読み込んでください。</div>
+            <div className="empty">events.json と recording.mp4 / recording.webm、または従来のJSONとPNGを読み込んでください。</div>
           ) : (
             orderedSteps.map((step, index) => (
               <StepEditor

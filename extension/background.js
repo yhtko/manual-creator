@@ -67,7 +67,7 @@ async function finishRecording(message) {
 
   const fileId = createFileId(state.recording_started_at || Date.now());
   const eventsFileName = `events-${fileId}.json`;
-  const recordingFileName = `recording-${fileId}.webm`;
+  const recordingFileName = `recording-${fileId}${getVideoExtension(message.mimeType || message.dataUrl)}`;
   const steps = state.steps.map((step, index) => ({
     ...step,
     step_no: index + 1,
@@ -159,6 +159,12 @@ function createFileId(timestamp) {
     String(date.getSeconds()).padStart(2, '0')
   ];
   return parts.join('');
+}
+
+function getVideoExtension(value) {
+  const text = String(value || '').toLowerCase();
+  if (text.includes('video/mp4')) return '.mp4';
+  return '.webm';
 }
 
 function createDefaultDescription(payload) {
