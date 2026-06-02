@@ -104,12 +104,17 @@ const TEXT = {
     jsonSave: '編集JSON保存',
     aiContextExport: 'AI用JSON出力',
     aiResultImport: 'AI結果JSON読込',
+    aiGenerate: 'AI説明生成',
     aiSettings: 'AI設定',
     aiProvider: 'Provider',
     aiModel: 'Model',
     aiApiKey: 'API Key',
     saveApiKey: 'この端末に保存',
     aiKeyNote: 'APIキーはChrome拡張機能には保存しません。保存を選ばない場合、ページを閉じると消えます。',
+    aiMissingKey: 'API Keyを入力してください。',
+    aiGenerating: 'AI説明文を生成しています。',
+    aiGenerated: (count) => `${count}件のAI説明文を反映しました。`,
+    aiFailed: 'AI説明文を生成できませんでした。',
     pptExport: 'PowerPoint出力',
     slideOne: '1ステップ/スライド',
     slideTwo: '2ステップ/スライド',
@@ -160,12 +165,17 @@ const TEXT = {
     jsonSave: 'Save JSON',
     aiContextExport: 'Export AI JSON',
     aiResultImport: 'Import AI Result JSON',
+    aiGenerate: 'Generate AI Description',
     aiSettings: 'AI Settings',
     aiProvider: 'Provider',
     aiModel: 'Model',
     aiApiKey: 'API Key',
     saveApiKey: 'Save on this device',
     aiKeyNote: 'The API key is not stored in the Chrome extension. If not saved, it is cleared when this page is closed.',
+    aiMissingKey: 'Enter an API key.',
+    aiGenerating: 'Generating AI descriptions.',
+    aiGenerated: (count) => `Applied ${count} AI descriptions.`,
+    aiFailed: 'Could not generate AI descriptions.',
     pptExport: 'Export PowerPoint',
     slideOne: '1 step / slide',
     slideTwo: '2 steps / slide',
@@ -198,6 +208,8 @@ function App() {
   const [recordingDataUrl, setRecordingDataUrl] = useState('');
   const [recordingDataUrls, setRecordingDataUrls] = useState({});
   const [videoStatus, setVideoStatus] = useState('');
+  const [aiStatus, setAiStatus] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
   const [slidesPerPage, setSlidesPerPage] = useState(1);
   const [aiSettings, setAiSettings] = useState(loadAiSettings);
 
@@ -273,6 +285,37 @@ function App() {
     const aiSteps = normalizeAiResultSteps(data);
     if (aiSteps.length === 0) return;
 
+    applyAiSteps(aiSteps);
+    setAiStatus(text.aiGenerated(aiSteps.length));
+  }
+
+  async function generateAiDescriptions() {
+    if (!aiSettings.apiKey) {
+      setAiStatus(text.aiMissingKey);
+      return;
+    }
+    if (orderedSteps.length === 0) return;
+
+    setAiBusy(true);
+    setAiStatus(text.aiGenerating);
+    try {
+      const aiContext = createAiContextProject(project, orderedSteps, images);
+      const responseText =
+        aiSettings.provider === 'claude'
+          ? await callClaude(aiSettings, aiContext)
+          : await callOpenAi(aiSettings, aiContext);
+      const aiSteps = normalizeAiResultSteps(parseJsonResponse(responseText));
+      applyAiSteps(aiSteps);
+      setAiStatus(text.aiGenerated(aiSteps.length));
+    } catch (error) {
+      setAiStatus(`${text.aiFailed} ${error.message || ''}`.trim());
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function applyAiSteps(aiSteps) {
+    if (!aiSteps || aiSteps.length === 0) return;
     setProject((current) => ({
       ...current,
       steps: current.steps.map((step, index) => {
@@ -613,7 +656,13 @@ function App() {
             />
             <span>{text.saveApiKey}</span>
           </label>
+          <div className="ai-action-row">
+            <button type="button" onClick={generateAiDescriptions} disabled={orderedSteps.length === 0 || aiBusy}>
+              {text.aiGenerate}
+            </button>
+          </div>
           <p className="field-note">{text.aiKeyNote}</p>
+          {aiStatus ? <p className="import-status">{aiStatus}</p> : null}
         </section>
 
         <section className="import-panel">
@@ -1219,6 +1268,112 @@ function normalizeAiResultSteps(data) {
       check_point: step.check_point || step.checkpoint || ''
     }))
     .filter((step) => step.step_no);
+}
+
+async function callOpenAi(settings, aiContext) {
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.apiKey}`
+    },
+    body: JSON.stringify({
+      model: settings.model || 'gpt-4.1-mini',
+      temperature: 0.2,
+      instructions: createAiSystemPrompt(aiContext.project.language),
+      input: createAiUserPrompt(aiContext)
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error?.message || `OpenAI API error: ${response.status}`);
+  }
+  return extractOpenAiText(data);
+}
+
+async function callClaude(settings, aiContext) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': settings.apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: settings.model || 'claude-sonnet-4-5',
+      max_tokens: 4000,
+      system: createAiSystemPrompt(aiContext.project.language),
+      messages: [
+        {
+          role: 'user',
+          content: createAiUserPrompt(aiContext)
+        }
+      ]
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error?.message || `Claude API error: ${response.status}`);
+  }
+  return (data.content || [])
+    .filter((item) => item.type === 'text')
+    .map((item) => item.text)
+    .join('\n');
+}
+
+function createAiSystemPrompt(language) {
+  const outputLanguage = language === 'en' ? 'English' : 'Japanese';
+  return [
+    'You enhance business procedure manual steps for office workers.',
+    `Write in ${outputLanguage}.`,
+    'Use the whole workflow, adjacent steps, DOM metadata, screen titles, URL, click timing, and screenshot references.',
+    'Do not invent confidential values. If uncertain, describe the operation generically.',
+    'Return JSON only. Do not wrap in markdown.',
+    'Return an object with a steps array. Each item must contain step_no, title, basic_description, enhanced_description, purpose, and check_point.'
+  ].join('\n');
+}
+
+function createAiUserPrompt(aiContext) {
+  return [
+    'Generate enhanced procedure descriptions from this context.',
+    'The output must be valid JSON only.',
+    JSON.stringify(aiContext)
+  ].join('\n\n');
+}
+
+function extractOpenAiText(data) {
+  if (data.output_text) return data.output_text;
+  const parts = [];
+  for (const item of data.output || []) {
+    for (const content of item.content || []) {
+      if (content.type === 'output_text' && content.text) {
+        parts.push(content.text);
+      }
+      if (content.type === 'text' && content.text) {
+        parts.push(content.text);
+      }
+    }
+  }
+  return parts.join('\n');
+}
+
+function parseJsonResponse(text) {
+  const raw = String(text || '').trim();
+  if (!raw) throw new Error('AI response was empty.');
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) return JSON.parse(fenced[1]);
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(raw.slice(start, end + 1));
+    }
+    throw new Error('AI response was not valid JSON.');
+  }
 }
 
 function loadAiSettings() {

@@ -177,6 +177,22 @@ button:disabled {
   line-height: 1.6;
 }
 
+.ai-action-row {
+  display: flex;
+  align-items: end;
+}
+
+.ai-action-row button {
+  width: 100%;
+  border-color: #2563eb;
+  color: #ffffff;
+  background: #2563eb;
+}
+
+.ai-action-row button:hover {
+  background: #1d4ed8;
+}
+
 .import-status {
   flex: 1 1 100%;
   margin: 0;
