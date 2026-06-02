@@ -1,6 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Document, HeadingLevel, ImageRun, Packer, Paragraph, TextRun } from 'docx';
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  HeadingLevel,
+  ImageRun,
+  Packer,
+  PageBreak,
+  Paragraph,
+  Table,
+  TableCell,
+  TableLayoutType,
+  TableRow,
+  TextRun,
+  VerticalAlign,
+  WidthType
+} from 'docx';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
@@ -16,6 +32,38 @@ const DEFAULT_PROJECT = {
   recording_started_at: null,
   recording_file: '',
   steps: []
+};
+
+const WORD_CELL_MARGINS = {
+  top: 140,
+  bottom: 140,
+  left: 160,
+  right: 160
+};
+
+const WORD_META_CELL_MARGINS = {
+  top: 80,
+  bottom: 80,
+  left: 100,
+  right: 100
+};
+
+const WORD_TABLE_BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 1, color: 'cbd5e1' },
+  bottom: { style: BorderStyle.SINGLE, size: 1, color: 'cbd5e1' },
+  left: { style: BorderStyle.SINGLE, size: 1, color: 'cbd5e1' },
+  right: { style: BorderStyle.SINGLE, size: 1, color: 'cbd5e1' },
+  insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
+};
+
+const WORD_INNER_TABLE_BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  bottom: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  left: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  right: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' },
+  insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
 };
 
 function App() {
@@ -49,7 +97,7 @@ function App() {
     setRecordingDataUrls({});
     setVideoStatus(
       normalized.recording_started_at
-        ? `続けて${normalized.recording_file || 'recording-*.mp4 / recording-*.webm'}を読み込んでください。`
+        ? `続けて${normalized.recording_file || 'recording-*.webm'}を読み込んでください。`
         : ''
     );
   }
@@ -68,7 +116,7 @@ function App() {
       prerequisites: current.prerequisites || appended.prerequisites,
       completion: current.completion || appended.completion
     }));
-    setVideoStatus('追加した記録のrecording-*.mp4 または recording-*.webmを読み込んでください。');
+    setVideoStatus('追加した記録のrecording-*.webmを読み込んでください。');
   }
 
   async function importImages(fileList) {
@@ -154,40 +202,80 @@ function App() {
   }
 
   async function exportWord() {
-    const children = [
-      new Paragraph({
-        text: project.title || '作業手順書',
-        heading: HeadingLevel.TITLE
-      })
-    ];
+    const children = createWordCover(project, orderedSteps);
 
     for (const step of orderedSteps) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: `Step ${step.step_no}`, bold: true, size: 28 })]
-        })
-      );
-
       const markedImage = await createMarkedImage(step, getStepImage(images, step));
-      if (markedImage) {
-        const wordSize = containSize(markedImage.width, markedImage.height, 520, 320);
-        children.push(
-          new Paragraph({
-            children: [
-              new ImageRun({
-                type: 'png',
-                data: dataUrlToUint8Array(markedImage.dataUrl),
-                transformation: { width: wordSize.w, height: wordSize.h }
-              })
-            ]
-          })
-        );
-      }
-
-      children.push(new Paragraph(step.description || step.element_text || ''));
+      children.push(createWordStepTable(step, markedImage));
+      children.push(spacerParagraph(120));
     }
 
-    const doc = new Document({ sections: [{ children }] });
+    const doc = new Document({
+      creator: '業務手順書自動作成ツール',
+      title: project.title || '作業手順書',
+      description: project.purpose || '',
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: 'Yu Gothic',
+              size: 21,
+              color: '111827'
+            },
+            paragraph: {
+              spacing: { after: 80 }
+            }
+          }
+        },
+        paragraphStyles: [
+          {
+            id: 'Title',
+            name: 'Title',
+            basedOn: 'Normal',
+            next: 'Normal',
+            run: {
+              size: 42,
+              bold: true,
+              color: '111827',
+              font: 'Yu Gothic'
+            },
+            paragraph: {
+              spacing: { after: 180 }
+            }
+          },
+          {
+            id: 'Heading1',
+            name: 'Heading 1',
+            basedOn: 'Normal',
+            next: 'Normal',
+            run: {
+              size: 28,
+              bold: true,
+              color: '1d4ed8',
+              font: 'Yu Gothic'
+            },
+            paragraph: {
+              spacing: { before: 220, after: 120 }
+            }
+          }
+        ]
+      },
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: {
+                top: 720,
+                right: 720,
+                bottom: 720,
+                left: 720
+              }
+            }
+          },
+          children
+        }
+      ]
+    });
     const blob = await Packer.toBlob(doc);
     saveAs(blob, `${safeFileName(project.title || 'manual')}.docx`);
   }
@@ -281,11 +369,7 @@ function App() {
       `);
     }
 
-    const htmlRecordingDataUrls =
-      Object.keys(recordingDataUrls).length > 0 ? recordingDataUrls : recordingDataUrl ? { recording_1: recordingDataUrl } : {};
-    const groupedHtmlSteps = Object.keys(htmlRecordingDataUrls).length > 0
-      ? await createGroupedHtmlSteps(orderedSteps, images, htmlRecordingDataUrls)
-      : htmlSteps;
+    const groupedHtmlSteps = htmlSteps;
 
     const html = `<!doctype html>
 <html lang="ja">
@@ -336,7 +420,7 @@ function App() {
     ${groupedHtmlSteps.join('\n')}
   </main>
   <script>
-    const recordingDataUrls = JSON.parse('${escapeScriptString(JSON.stringify(htmlRecordingDataUrls))}');
+    const recordingDataUrls = {};
     document.querySelectorAll('video[data-start][data-end]').forEach((video) => {
       const recordingDataUrl = recordingDataUrls[video.dataset.recordingId || 'recording_1'];
       if (recordingDataUrl) video.src = recordingDataUrl;
@@ -460,7 +544,7 @@ function App() {
           </label>
           <label>
             動画読込
-            <input type="file" accept="video/webm,video/mp4,.webm,.mp4" onChange={(event) => importVideo(event.target.files[0])} />
+            <input type="file" accept="video/webm,.webm" onChange={(event) => importVideo(event.target.files[0])} />
           </label>
           <label>
             PNG読込
@@ -471,7 +555,7 @@ function App() {
 
         <section className="steps">
           {orderedSteps.length === 0 ? (
-            <div className="empty">events.json と recording.mp4 / recording.webm、または従来のJSONとPNGを読み込んでください。</div>
+            <div className="empty">events.json と recording.webm、または従来のJSONとPNGを読み込んでください。</div>
           ) : (
             orderedSteps.map((step, index) => (
               <StepEditor
@@ -554,6 +638,234 @@ function MarkedPreview({ step, image }) {
       </span>
     </div>
   );
+}
+
+function createWordCover(project, orderedSteps) {
+  return [
+    new Paragraph({
+      text: project.title || '作業手順書',
+      heading: HeadingLevel.TITLE
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `${orderedSteps.length} ステップ`,
+          color: '64748b',
+          size: 22
+        })
+      ],
+      spacing: { after: 180 }
+    }),
+    createWordOverviewTable(project),
+    spacerParagraph(120),
+    new Paragraph({
+      text: '手順一覧',
+      heading: HeadingLevel.HEADING_1
+    }),
+    createWordStepListTable(orderedSteps),
+    new Paragraph({
+      children: [new PageBreak()]
+    })
+  ];
+}
+
+function createWordOverviewTable(project) {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    columnWidths: [1600, 7600],
+    borders: WORD_TABLE_BORDERS,
+    rows: [
+      createWordInfoRow('目的', project.purpose || '-'),
+      createWordInfoRow('対象者', project.audience || '-'),
+      createWordInfoRow('前提条件', project.prerequisites || '-'),
+      createWordInfoRow('完了条件', project.completion || '-')
+    ]
+  });
+}
+
+function createWordInfoRow(label, value) {
+  return new TableRow({
+    children: [
+      new TableCell({
+        width: { size: 18, type: WidthType.PERCENTAGE },
+        shading: { fill: 'eff6ff' },
+        margins: WORD_CELL_MARGINS,
+        verticalAlign: VerticalAlign.CENTER,
+        children: [wordText(label, { bold: true, color: '1d4ed8' })]
+      }),
+      new TableCell({
+        width: { size: 82, type: WidthType.PERCENTAGE },
+        margins: WORD_CELL_MARGINS,
+        children: [wordText(value)]
+      })
+    ]
+  });
+}
+
+function createWordStepListTable(steps) {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    columnWidths: [900, 3000, 5300],
+    borders: WORD_TABLE_BORDERS,
+    rows: [
+      new TableRow({
+        tableHeader: true,
+        children: [
+          wordHeaderCell('No.'),
+          wordHeaderCell('操作対象'),
+          wordHeaderCell('説明')
+        ]
+      }),
+      ...steps.map((step) =>
+        new TableRow({
+          children: [
+            wordCell(`Step ${step.step_no}`, { width: 10, bold: true, color: '1d4ed8' }),
+            wordCell(getStepTitle(step), { width: 32 }),
+            wordCell(step.description || createDefaultDescription(step), { width: 58 })
+          ]
+        })
+      )
+    ]
+  });
+}
+
+function createWordStepTable(step, markedImage) {
+  const imageParagraph = markedImage
+    ? new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new ImageRun({
+            type: 'png',
+            data: dataUrlToUint8Array(markedImage.dataUrl),
+            transformation: containSize(markedImage.width, markedImage.height, 360, 230)
+          })
+        ]
+      })
+    : wordText('画像がありません', { color: '64748b', alignment: AlignmentType.CENTER });
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    columnWidths: [4300, 4900],
+    borders: WORD_TABLE_BORDERS,
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            columnSpan: 2,
+            shading: { fill: 'eff6ff' },
+            margins: WORD_CELL_MARGINS,
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: `Step ${step.step_no}`, bold: true, color: '1d4ed8', size: 24 }),
+                  new TextRun({ text: `  ${getStepTitle(step)}`, bold: true, color: '111827', size: 24 })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 47, type: WidthType.PERCENTAGE },
+            margins: WORD_CELL_MARGINS,
+            verticalAlign: VerticalAlign.CENTER,
+            children: [imageParagraph]
+          }),
+          new TableCell({
+            width: { size: 53, type: WidthType.PERCENTAGE },
+            margins: WORD_CELL_MARGINS,
+            children: [
+              wordLabel('説明文'),
+              wordText(step.description || createDefaultDescription(step), { size: 22 }),
+              spacerParagraph(80),
+              createWordMetaTable(step)
+            ]
+          })
+        ]
+      })
+    ]
+  });
+}
+
+function createWordMetaTable(step) {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    borders: WORD_INNER_TABLE_BORDERS,
+    rows: [
+      createWordMetaRow('画面', step.page_title || '-'),
+      createWordMetaRow('対象', step.element_text || step.aria_label || getStepTitle(step)),
+      createWordMetaRow('URL', step.url || '-')
+    ]
+  });
+}
+
+function createWordMetaRow(label, value) {
+  return new TableRow({
+    children: [
+      new TableCell({
+        width: { size: 20, type: WidthType.PERCENTAGE },
+        shading: { fill: 'f8fafc' },
+        margins: WORD_META_CELL_MARGINS,
+        children: [wordText(label, { bold: true, color: '475569', size: 18 })]
+      }),
+      new TableCell({
+        width: { size: 80, type: WidthType.PERCENTAGE },
+        margins: WORD_META_CELL_MARGINS,
+        children: [wordText(value, { size: 18, color: '475569' })]
+      })
+    ]
+  });
+}
+
+function wordHeaderCell(text) {
+  return new TableCell({
+    shading: { fill: '1d4ed8' },
+    margins: WORD_CELL_MARGINS,
+    children: [wordText(text, { bold: true, color: 'ffffff' })]
+  });
+}
+
+function wordCell(text, options = {}) {
+  return new TableCell({
+    width: options.width ? { size: options.width, type: WidthType.PERCENTAGE } : undefined,
+    margins: WORD_CELL_MARGINS,
+    children: [wordText(text, options)]
+  });
+}
+
+function wordLabel(text) {
+  return new Paragraph({
+    children: [new TextRun({ text, bold: true, color: '1d4ed8', size: 18 })],
+    spacing: { after: 50 }
+  });
+}
+
+function wordText(text, options = {}) {
+  return new Paragraph({
+    alignment: options.alignment,
+    children: [
+      new TextRun({
+        text: String(text || ''),
+        bold: Boolean(options.bold),
+        color: options.color || '111827',
+        size: options.size || 20
+      })
+    ],
+    spacing: { after: options.after ?? 60 }
+  });
+}
+
+function spacerParagraph(after = 120) {
+  return new Paragraph({
+    children: [new TextRun({ text: '' })],
+    spacing: { after }
+  });
 }
 
 function normalizeProject(data, recordingId = 'recording_1') {
@@ -769,13 +1081,10 @@ async function addMarkedImageAsset(assetsFolder, step, images, fileName) {
 }
 
 async function createSharePointPastePackage(project, steps, images, zip) {
-  const videoRequirements = createVideoRequirementMap(steps);
   const procedureSteps = [];
 
   for (const step of steps) {
     const imageName = `step_${String(step.step_no).padStart(2, '0')}.png`;
-    const videoInfo = videoRequirements.get(step.step_no);
-    const videoName = videoInfo ? `step_${String(step.step_no).padStart(2, '0')}.mp4` : null;
     const markedImage = await createMarkedImage(step, getStepImage(images, step));
 
     if (markedImage) {
@@ -787,12 +1096,12 @@ async function createSharePointPastePackage(project, steps, images, zip) {
       title: getStepTitle(step),
       description: step.description || createDefaultDescription(step),
       image: imageName,
-      video: videoName,
-      video_required: Boolean(videoInfo),
-      video_status: videoInfo ? 'needs_mp4_conversion' : 'none',
-      clip_source: videoInfo?.source || null,
-      clip_start_sec: videoInfo ? Number(videoInfo.start.toFixed(2)) : null,
-      clip_end_sec: videoInfo ? Number(videoInfo.end.toFixed(2)) : null,
+      video: null,
+      video_required: false,
+      video_status: 'not_used',
+      clip_source: null,
+      clip_start_sec: null,
+      clip_end_sec: null,
       source_element: {
         tag: step.tag_name || '',
         text: step.element_text || '',
@@ -812,7 +1121,7 @@ async function createSharePointPastePackage(project, steps, images, zip) {
     completion: project.completion || '',
     notes: [
       'SharePointページへ貼り付けるための半自動出力です。',
-      'MP4ファイルはブラウザ内では生成しません。video_required=trueの手順はclip_sourceと切り出し時刻を使って別途MP4化してください。'
+      '動画は出力しません。録画ファイルはクリック時点のスクリーンショット抽出素材として使用します。'
     ],
     steps: procedureSteps
   };
@@ -821,28 +1130,6 @@ async function createSharePointPastePackage(project, steps, images, zip) {
     procedure,
     markdown: createSharePointPasteMarkdown(procedure)
   };
-}
-
-function createVideoRequirementMap(steps) {
-  const requirements = new Map();
-  const groups = createHtmlStepGroups(steps);
-
-  for (const group of groups) {
-    if (group.type !== 'video') continue;
-    const first = group.steps[0];
-    const last = group.steps[group.steps.length - 1];
-    const recordingStartedAt = first.recording_started_at;
-    const start = Math.max(0, (Number(first.timestamp_ms) - Number(recordingStartedAt)) / 1000 - 0.35);
-    const end = Math.max(start + 0.8, (Number(last.timestamp_ms) - Number(recordingStartedAt)) / 1000 + 0.75);
-
-    requirements.set(first.step_no, {
-      source: first.recording_file || '',
-      start,
-      end
-    });
-  }
-
-  return requirements;
 }
 
 function createSharePointPasteMarkdown(procedure) {
@@ -865,19 +1152,13 @@ function createSharePointPasteMarkdown(procedure) {
     lines.push(step.description || '');
     lines.push('');
     lines.push(`画像：${step.image}`);
-    if (step.video_required) {
-      lines.push(`動画：${step.video}`);
-      lines.push(`動画切り出し：${step.clip_source || '-'} ${step.clip_start_sec}秒 から ${step.clip_end_sec}秒`);
-    } else {
-      lines.push('動画：なし');
-    }
+    lines.push('動画：なし');
     lines.push('');
   }
 
   lines.push('## SharePoint配置メモ');
   lines.push('1. このMarkdown本文をSharePointページへ貼り付けます。');
   lines.push('2. 各手順の画像ファイルを、該当箇所へ手動で配置します。');
-  lines.push('3. video_required=true の手順だけ、必要に応じてMP4を作成して配置します。');
   lines.push('');
 
   return `${lines.join('\n')}\n`;
