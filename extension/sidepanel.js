@@ -162,9 +162,6 @@ function validateTab(tab) {
 
 function getSupportedMimeType() {
   const types = [
-    'video/mp4;codecs=avc1.42E01E',
-    'video/mp4;codecs=h264',
-    'video/mp4',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm'

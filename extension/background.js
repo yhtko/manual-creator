@@ -79,12 +79,11 @@ async function finishRecording(message) {
     capture_mode: 'video',
     recording_started_at: state.recording_started_at,
     recording_file: recordingFileName,
+    recording_mime_type: message.mimeType || '',
     steps
   };
 
-  if (steps.length > 0) {
-    await downloadText(eventsFileName, JSON.stringify(project, null, 2), 'application/json');
-  }
+  await downloadText(eventsFileName, JSON.stringify(project, null, 2), 'application/json');
 
   if (message.dataUrl) {
     await chrome.downloads.download({

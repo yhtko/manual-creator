@@ -61,7 +61,7 @@ Webアプリの「HTML出力」から、画像と説明文を含む単体HTMLフ
 
 GIF変換はブラウザ負荷とファイルサイズが大きいため、現時点では行いません。録画済みの `recording-*.mp4` または `recording-*.webm` をHTML内に1回だけ埋め込み、連続操作ブロックごとに再生区間を指定します。
 
-Chrome / Edge の MediaRecorder がMP4録画に対応している環境では、拡張機能はMP4を優先して保存します。MP4非対応の場合はWebMで保存します。
+Chrome / Edge の MediaRecorder が出力するMP4は環境によって再生互換性が低いため、拡張機能の録画はWebMを標準にしています。SharePoint向けにMP4を試す場合は、外部ツールで変換したMP4をWebアプリの「動画読込」で読み込んでから「SharePoint用ZIP」を出力してください。
 
 ## SharePoint用ZIP出力
 
