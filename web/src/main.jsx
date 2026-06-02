@@ -18,12 +18,14 @@ import {
   WidthType
 } from 'docx';
 import { saveAs } from 'file-saver';
-import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
 import './styles.css';
 
 const DEFAULT_PROJECT = {
   title: '作業手順書',
+  language: 'ja',
+  created_at: '',
+  author: '',
   purpose: '',
   audience: '',
   prerequisites: '',
@@ -66,6 +68,99 @@ const WORD_INNER_TABLE_BORDERS = {
   insideVertical: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' }
 };
 
+const TEXT = {
+  ja: {
+    title: 'タイトル',
+    language: '言語',
+    japanese: '日本語',
+    english: '英語',
+    createdAt: '作成日',
+    author: '作成者',
+    purpose: '目的',
+    audience: '対象者',
+    prerequisites: '前提条件',
+    completion: '完了条件',
+    steps: 'ステップ',
+    stepList: '手順一覧',
+    operationTarget: '操作対象',
+    description: '説明文',
+    screen: '画面',
+    target: '対象',
+    page: 'ページ',
+    url: 'URL',
+    wordExport: 'Word出力',
+    jsonSave: '編集JSON保存',
+    pptExport: 'PowerPoint出力',
+    slideOne: '1ステップ/スライド',
+    slideTwo: '2ステップ/スライド',
+    slideFour: '4ステップ/スライド',
+    jsonImport: 'JSON読込',
+    jsonAppend: 'JSON追記',
+    videoImport: '動画読込',
+    pngImport: 'PNG読込',
+    moveUp: '上へ',
+    moveDown: '下へ',
+    delete: '削除',
+    imageMissing: '画像がありません',
+    needImage: (image) => `${image} を生成または読み込んでください`,
+    empty: 'events.json と recording.webm、または従来のJSONとPNGを読み込んでください。',
+    continueVideo: (file) => `続けて${file || 'recording-*.webm'}を読み込んでください。`,
+    appendVideo: '追加した記録のrecording-*.webmを読み込んでください。',
+    importJsonFirst: '先にevents.jsonを読み込んでください。',
+    noSteps: '切り出すステップがありません。',
+    extracting: '録画から画像を切り出しています。',
+    extracted: (count) => `${count}件の画像を生成しました。`,
+    extractFailed: '録画から画像を生成できませんでした。',
+    creator: '業務手順書自動作成ツール',
+    defaultTitle: '作業手順書'
+  },
+  en: {
+    title: 'Title',
+    language: 'Language',
+    japanese: 'Japanese',
+    english: 'English',
+    createdAt: 'Created Date',
+    author: 'Author',
+    purpose: 'Purpose',
+    audience: 'Audience',
+    prerequisites: 'Prerequisites',
+    completion: 'Completion Criteria',
+    steps: 'steps',
+    stepList: 'Procedure List',
+    operationTarget: 'Target',
+    description: 'Description',
+    screen: 'Screen',
+    target: 'Target',
+    page: 'Page',
+    url: 'URL',
+    wordExport: 'Export Word',
+    jsonSave: 'Save JSON',
+    pptExport: 'Export PowerPoint',
+    slideOne: '1 step / slide',
+    slideTwo: '2 steps / slide',
+    slideFour: '4 steps / slide',
+    jsonImport: 'Import JSON',
+    jsonAppend: 'Append JSON',
+    videoImport: 'Import Video',
+    pngImport: 'Import PNG',
+    moveUp: 'Up',
+    moveDown: 'Down',
+    delete: 'Delete',
+    imageMissing: 'No image',
+    needImage: (image) => `Generate or import ${image}`,
+    empty: 'Import events.json and recording.webm, or legacy JSON and PNG files.',
+    continueVideo: (file) => `Next, import ${file || 'recording-*.webm'}.`,
+    appendVideo: 'Import the recording-*.webm file for the appended recording.',
+    importJsonFirst: 'Import events.json first.',
+    noSteps: 'There are no steps to extract.',
+    extracting: 'Extracting images from the recording.',
+    extracted: (count) => `Generated ${count} images.`,
+    extractFailed: 'Could not generate images from the recording.',
+    creator: 'Manual Creator',
+    defaultTitle: 'Procedure Manual'
+  }
+};
+
 function App() {
   const [project, setProject] = useState(DEFAULT_PROJECT);
   const [images, setImages] = useState({});
@@ -78,6 +173,8 @@ function App() {
     () => project.steps.map((step, index) => ({ ...step, step_no: index + 1 })),
     [project.steps]
   );
+  const language = project.language === 'en' ? 'en' : 'ja';
+  const text = TEXT[language];
 
   function updateProjectTitle(value) {
     setProject((current) => ({ ...current, title: value }));
@@ -97,7 +194,7 @@ function App() {
     setRecordingDataUrls({});
     setVideoStatus(
       normalized.recording_started_at
-        ? `続けて${normalized.recording_file || 'recording-*.webm'}を読み込んでください。`
+        ? text.continueVideo(normalized.recording_file)
         : ''
     );
   }
@@ -116,7 +213,7 @@ function App() {
       prerequisites: current.prerequisites || appended.prerequisites,
       completion: current.completion || appended.completion
     }));
-    setVideoStatus('追加した記録のrecording-*.webmを読み込んでください。');
+    setVideoStatus(text.appendVideo);
   }
 
   async function importImages(fileList) {
@@ -132,15 +229,15 @@ function App() {
   async function importVideo(file) {
     if (!file) return;
     if (!project.recording_started_at) {
-      setVideoStatus('先にevents.jsonを読み込んでください。');
+      setVideoStatus(text.importJsonFirst);
       return;
     }
     if (orderedSteps.length === 0) {
-      setVideoStatus('切り出すステップがありません。');
+      setVideoStatus(text.noSteps);
       return;
     }
 
-    setVideoStatus('録画から画像を切り出しています。');
+    setVideoStatus(text.extracting);
     try {
       const targetRecordingId = getPendingRecordingId(orderedSteps, recordingDataUrls);
       const targetSteps = orderedSteps.filter((step) => (step.recording_id || 'recording_1') === targetRecordingId);
@@ -157,9 +254,9 @@ function App() {
       }));
       const entries = await extractStepImagesFromVideo(file, targetSteps, recordingStartedAt);
       mergeImages(entries);
-      setVideoStatus(`${entries.length}件の画像を生成しました。`);
+      setVideoStatus(text.extracted(entries.length));
     } catch (error) {
-      setVideoStatus(error.message || '録画から画像を生成できませんでした。');
+      setVideoStatus(error.message || text.extractFailed);
     }
   }
 
@@ -202,17 +299,17 @@ function App() {
   }
 
   async function exportWord() {
-    const children = createWordCover(project, orderedSteps);
+    const children = createWordCover(project, orderedSteps, text);
 
     for (const step of orderedSteps) {
       const markedImage = await createMarkedImage(step, getStepImage(images, step));
-      children.push(createWordStepTable(step, markedImage));
+      children.push(createWordStepTable(step, markedImage, text));
       children.push(spacerParagraph(120));
     }
 
     const doc = new Document({
-      creator: '業務手順書自動作成ツール',
-      title: project.title || '作業手順書',
+      creator: text.creator,
+      title: project.title || text.defaultTitle,
       description: project.purpose || '',
       styles: {
         default: {
@@ -343,120 +440,6 @@ function App() {
     await pptx.writeFile({ fileName: `${safeFileName(project.title || 'manual')}.pptx` });
   }
 
-  async function exportHtml() {
-    const htmlSteps = [];
-
-    for (const step of orderedSteps) {
-      const markedImage = await createMarkedImage(step, getStepImage(images, step));
-      const imageHtml = markedImage
-        ? `<img class="step-image" src="${markedImage.dataUrl}" alt="Step ${step.step_no}">`
-        : '<div class="missing-image">画像がありません</div>';
-      const description = step.description || createDefaultDescription(step);
-
-      htmlSteps.push(`
-        <section class="step">
-          <div class="step-media">${imageHtml}</div>
-          <div class="step-content">
-            <p class="step-number">Step ${step.step_no}</p>
-            <h2>${escapeHtml(getStepTitle(step))}</h2>
-            <p class="description">${escapeHtml(description)}</p>
-            <dl>
-              <div><dt>画面</dt><dd>${escapeHtml(step.page_title || '-')}</dd></div>
-              <div><dt>対象</dt><dd>${escapeHtml(getStepTitle(step))}</dd></div>
-            </dl>
-          </div>
-        </section>
-      `);
-    }
-
-    const groupedHtmlSteps = htmlSteps;
-
-    const html = `<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(project.title || '作業手順書')}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; color: #111827; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fafc; }
-    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; }
-    header { margin-bottom: 24px; }
-    h1 { margin: 0; font-size: 28px; line-height: 1.35; }
-    .subtitle { margin: 8px 0 0; color: #64748b; font-size: 14px; }
-    .overview { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin: 20px 0 24px; }
-    .overview div { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: start; border: 1px solid #dbe3ef; border-radius: 8px; padding: 12px; background: #ffffff; }
-    .overview dt { margin: 0; color: #2563eb; font-size: 13px; font-weight: 800; white-space: nowrap; }
-    .overview dd { margin: 0; color: #111827; font-size: 14px; line-height: 1.7; }
-    .step { display: grid; grid-template-columns: minmax(280px, 54%) 1fr; gap: 20px; align-items: start; margin-top: 18px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 16px; background: #ffffff; break-inside: avoid; }
-    .step-image { display: block; width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
-    .step-video { display: block; width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; background: #000000; }
-    .missing-image { display: grid; place-items: center; min-height: 220px; border: 1px dashed #cbd5e1; border-radius: 6px; color: #64748b; background: #f8fafc; }
-    .step-number { margin: 0 0 8px; color: #2563eb; font-size: 13px; font-weight: 800; }
-    h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.45; }
-    .description { margin: 0 0 16px; font-size: 16px; line-height: 1.8; }
-    dl { display: grid; gap: 8px; margin: 0; color: #475569; font-size: 13px; }
-    .step-content dl div { display: grid; grid-template-columns: 48px 1fr; gap: 8px; }
-    dt { font-weight: 800; }
-    dd { margin: 0; overflow-wrap: anywhere; }
-    .operation-list { margin: 0; padding-left: 1.25rem; line-height: 1.8; }
-    .video-step { border-color: #bfdbfe; background: #f8fbff; }
-    @media (max-width: 760px) { .step { grid-template-columns: 1fr; } }
-    @media print { body { background: #ffffff; } main { max-width: none; padding: 0; } .step { page-break-inside: avoid; } }
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <h1>${escapeHtml(project.title || '作業手順書')}</h1>
-      <p class="subtitle">${orderedSteps.length} ステップ</p>
-    </header>
-    <dl class="overview">
-      <div><dt>目的</dt><dd>${escapeHtml(project.purpose || '-')}</dd></div>
-      <div><dt>対象者</dt><dd>${escapeHtml(project.audience || '-')}</dd></div>
-      <div><dt>前提条件</dt><dd>${escapeHtml(project.prerequisites || '-')}</dd></div>
-      <div><dt>完了条件</dt><dd>${escapeHtml(project.completion || '-')}</dd></div>
-    </dl>
-    ${groupedHtmlSteps.join('\n')}
-  </main>
-  <script>
-    const recordingDataUrls = {};
-    document.querySelectorAll('video[data-start][data-end]').forEach((video) => {
-      const recordingDataUrl = recordingDataUrls[video.dataset.recordingId || 'recording_1'];
-      if (recordingDataUrl) video.src = recordingDataUrl;
-      const start = Number(video.dataset.start || 0);
-      const end = Number(video.dataset.end || 0);
-      video.addEventListener('loadedmetadata', () => { video.currentTime = start; });
-      video.addEventListener('play', () => {
-        if (video.currentTime < start || video.currentTime > end) video.currentTime = start;
-      });
-      video.addEventListener('timeupdate', () => {
-        if (video.currentTime >= end) {
-          video.pause();
-          video.currentTime = start;
-        }
-      });
-    });
-  </script>
-</body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    saveAs(blob, `${safeFileName(project.title || 'manual')}.html`);
-    exportProjectJson();
-  }
-
-  async function exportSharePointZip() {
-    const zip = new JSZip();
-    const packageData = await createSharePointPastePackage(project, orderedSteps, images, zip);
-    zip.file('procedure.json', JSON.stringify(packageData.procedure, null, 2));
-    zip.file('sharepoint_paste.md', packageData.markdown);
-    zip.file('manual_creator_project.json', JSON.stringify(createEditableProject(project, orderedSteps), null, 2));
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    saveAs(blob, `${safeFileName(project.title || 'manual')}-sharepoint-${createFileStamp()}.zip`);
-  }
-
   function exportProjectJson() {
     const editableProject = createEditableProject(project, orderedSteps);
     const blob = new Blob([JSON.stringify(editableProject, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -469,7 +452,7 @@ function App() {
         <header className="topbar">
           <div>
             <label className="eyebrow" htmlFor="projectTitle">
-              タイトル
+              {text.title}
             </label>
             <input
               id="projectTitle"
@@ -480,52 +463,65 @@ function App() {
           </div>
           <div className="export-actions">
             <select value={slidesPerPage} onChange={(event) => setSlidesPerPage(event.target.value)}>
-              <option value="1">1ステップ/スライド</option>
-              <option value="2">2ステップ/スライド</option>
-              <option value="4">4ステップ/スライド</option>
+              <option value="1">{text.slideOne}</option>
+              <option value="2">{text.slideTwo}</option>
+              <option value="4">{text.slideFour}</option>
             </select>
             <button type="button" onClick={exportWord} disabled={orderedSteps.length === 0}>
-              Word出力
-            </button>
-            <button type="button" onClick={exportHtml} disabled={orderedSteps.length === 0}>
-              HTML出力
-            </button>
-            <button type="button" onClick={exportSharePointZip} disabled={orderedSteps.length === 0}>
-              SharePoint用ZIP
+              {text.wordExport}
             </button>
             <button type="button" onClick={exportProjectJson} disabled={orderedSteps.length === 0}>
-              編集JSON保存
+              {text.jsonSave}
             </button>
             <button type="button" onClick={exportPowerPoint} disabled={orderedSteps.length === 0}>
-              PowerPoint出力
+              {text.pptExport}
             </button>
           </div>
         </header>
 
         <section className="document-info">
           <label>
-            目的
+            {text.language}
+            <select value={language} onChange={(event) => updateProjectInfo('language', event.target.value)}>
+              <option value="ja">{text.japanese}</option>
+              <option value="en">{text.english}</option>
+            </select>
+          </label>
+          <label>
+            {text.createdAt}
+            <input
+              type="date"
+              value={project.created_at || ''}
+              onChange={(event) => updateProjectInfo('created_at', event.target.value)}
+            />
+          </label>
+          <label>
+            {text.author}
+            <input value={project.author || ''} onChange={(event) => updateProjectInfo('author', event.target.value)} />
+          </label>
+          <label>
+            {text.purpose}
             <textarea
               value={project.purpose || ''}
               onChange={(event) => updateProjectInfo('purpose', event.target.value)}
             />
           </label>
           <label>
-            対象者
+            {text.audience}
             <textarea
               value={project.audience || ''}
               onChange={(event) => updateProjectInfo('audience', event.target.value)}
             />
           </label>
           <label>
-            前提条件
+            {text.prerequisites}
             <textarea
               value={project.prerequisites || ''}
               onChange={(event) => updateProjectInfo('prerequisites', event.target.value)}
             />
           </label>
           <label>
-            完了条件
+            {text.completion}
             <textarea
               value={project.completion || ''}
               onChange={(event) => updateProjectInfo('completion', event.target.value)}
@@ -535,19 +531,19 @@ function App() {
 
         <section className="import-panel">
           <label>
-            JSON読込
+            {text.jsonImport}
             <input type="file" accept="application/json,.json" onChange={(event) => importProject(event.target.files[0])} />
           </label>
           <label>
-            JSON追記
+            {text.jsonAppend}
             <input type="file" accept="application/json,.json" onChange={(event) => appendProject(event.target.files[0])} />
           </label>
           <label>
-            動画読込
+            {text.videoImport}
             <input type="file" accept="video/webm,.webm" onChange={(event) => importVideo(event.target.files[0])} />
           </label>
           <label>
-            PNG読込
+            {text.pngImport}
             <input type="file" accept="image/png" multiple onChange={(event) => importImages(event.target.files)} />
           </label>
           {videoStatus ? <p className="import-status">{videoStatus}</p> : null}
@@ -555,7 +551,7 @@ function App() {
 
         <section className="steps">
           {orderedSteps.length === 0 ? (
-            <div className="empty">events.json と recording.webm、または従来のJSONとPNGを読み込んでください。</div>
+            <div className="empty">{text.empty}</div>
           ) : (
             orderedSteps.map((step, index) => (
               <StepEditor
@@ -567,6 +563,7 @@ function App() {
                 onUpdate={(patch) => updateStep(index, patch)}
                 onDelete={() => deleteStep(index)}
                 onMove={(direction) => moveStep(index, direction)}
+                text={text}
               />
             ))
           )}
@@ -576,34 +573,34 @@ function App() {
   );
 }
 
-function StepEditor({ step, image, index, total, onUpdate, onDelete, onMove }) {
+function StepEditor({ step, image, index, total, onUpdate, onDelete, onMove, text }) {
   return (
     <article className="step-card">
       <div className="step-preview">
-        {image ? <MarkedPreview step={step} image={image} /> : <span>{step.image} を生成または読み込んでください</span>}
+        {image ? <MarkedPreview step={step} image={image} /> : <span>{text.needImage(step.image)}</span>}
       </div>
       <div className="step-body">
         <div className="step-heading">
           <strong>Step {step.step_no}</strong>
           <div className="step-actions">
             <button type="button" onClick={() => onMove(-1)} disabled={index === 0}>
-              上へ
+              {text.moveUp}
             </button>
             <button type="button" onClick={() => onMove(1)} disabled={index === total - 1}>
-              下へ
+              {text.moveDown}
             </button>
             <button type="button" className="danger" onClick={onDelete}>
-              削除
+              {text.delete}
             </button>
           </div>
         </div>
         <dl className="meta">
           <div>
-            <dt>ページ</dt>
+            <dt>{text.page}</dt>
             <dd>{step.page_title || '-'}</dd>
           </div>
           <div>
-            <dt>対象</dt>
+            <dt>{text.target}</dt>
             <dd>{step.element_text || step.aria_label || '-'}</dd>
           </div>
           <div>
@@ -612,7 +609,7 @@ function StepEditor({ step, image, index, total, onUpdate, onDelete, onMove }) {
           </div>
         </dl>
         <label className="description-label">
-          説明文
+          {text.description}
           <textarea
             value={step.description || ''}
             placeholder={createDefaultDescription(step)}
@@ -640,46 +637,48 @@ function MarkedPreview({ step, image }) {
   );
 }
 
-function createWordCover(project, orderedSteps) {
+function createWordCover(project, orderedSteps, text) {
   return [
     new Paragraph({
-      text: project.title || '作業手順書',
+      text: project.title || text.defaultTitle,
       heading: HeadingLevel.TITLE
     }),
     new Paragraph({
       children: [
         new TextRun({
-          text: `${orderedSteps.length} ステップ`,
+          text: `${orderedSteps.length} ${text.steps}`,
           color: '64748b',
           size: 22
         })
       ],
       spacing: { after: 180 }
     }),
-    createWordOverviewTable(project),
+    createWordOverviewTable(project, text),
     spacerParagraph(120),
     new Paragraph({
-      text: '手順一覧',
+      text: text.stepList,
       heading: HeadingLevel.HEADING_1
     }),
-    createWordStepListTable(orderedSteps),
+    createWordStepListTable(orderedSteps, text),
     new Paragraph({
       children: [new PageBreak()]
     })
   ];
 }
 
-function createWordOverviewTable(project) {
+function createWordOverviewTable(project, text) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     layout: TableLayoutType.FIXED,
     columnWidths: [1600, 7600],
     borders: WORD_TABLE_BORDERS,
     rows: [
-      createWordInfoRow('目的', project.purpose || '-'),
-      createWordInfoRow('対象者', project.audience || '-'),
-      createWordInfoRow('前提条件', project.prerequisites || '-'),
-      createWordInfoRow('完了条件', project.completion || '-')
+      createWordInfoRow(text.createdAt, project.created_at || createDateStamp()),
+      createWordInfoRow(text.author, project.author || '-'),
+      createWordInfoRow(text.purpose, project.purpose || '-'),
+      createWordInfoRow(text.audience, project.audience || '-'),
+      createWordInfoRow(text.prerequisites, project.prerequisites || '-'),
+      createWordInfoRow(text.completion, project.completion || '-')
     ]
   });
 }
@@ -703,7 +702,7 @@ function createWordInfoRow(label, value) {
   });
 }
 
-function createWordStepListTable(steps) {
+function createWordStepListTable(steps, text) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     layout: TableLayoutType.FIXED,
@@ -714,8 +713,8 @@ function createWordStepListTable(steps) {
         tableHeader: true,
         children: [
           wordHeaderCell('No.'),
-          wordHeaderCell('操作対象'),
-          wordHeaderCell('説明')
+          wordHeaderCell(text.operationTarget),
+          wordHeaderCell(text.description)
         ]
       }),
       ...steps.map((step) =>
@@ -731,7 +730,7 @@ function createWordStepListTable(steps) {
   });
 }
 
-function createWordStepTable(step, markedImage) {
+function createWordStepTable(step, markedImage, text) {
   const wordImageSize = markedImage ? containWordImageSize(markedImage.width, markedImage.height, 360, 230) : null;
   const imageParagraph = markedImage
     ? new Paragraph({
@@ -744,7 +743,7 @@ function createWordStepTable(step, markedImage) {
           })
         ]
       })
-    : wordText('画像がありません', { color: '64748b', alignment: AlignmentType.CENTER });
+    : wordText(text.imageMissing, { color: '64748b', alignment: AlignmentType.CENTER });
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -790,10 +789,10 @@ function createWordStepTable(step, markedImage) {
             width: { size: 53, type: WidthType.PERCENTAGE },
             margins: WORD_CELL_MARGINS,
             children: [
-              wordLabel('説明文'),
+              wordLabel(text.description),
               wordText(step.description || createDefaultDescription(step), { size: 22 }),
               spacerParagraph(80),
-              createWordMetaTable(step)
+              createWordMetaTable(step, text)
             ]
           })
         ]
@@ -802,15 +801,15 @@ function createWordStepTable(step, markedImage) {
   });
 }
 
-function createWordMetaTable(step) {
+function createWordMetaTable(step, text) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     layout: TableLayoutType.FIXED,
     borders: WORD_INNER_TABLE_BORDERS,
     rows: [
-      createWordMetaRow('画面', step.page_title || '-'),
-      createWordMetaRow('対象', step.element_text || step.aria_label || getStepTitle(step)),
-      createWordMetaRow('URL', step.url || '-')
+      createWordMetaRow(text.screen, step.page_title || '-'),
+      createWordMetaRow(text.target, step.element_text || step.aria_label || getStepTitle(step)),
+      createWordMetaRow(text.url, step.url || '-')
     ]
   });
 }
@@ -910,6 +909,9 @@ function normalizeProject(data, recordingId = 'recording_1') {
   return {
     ...DEFAULT_PROJECT,
     title: data.title || DEFAULT_PROJECT.title,
+    language: data.language === 'en' ? 'en' : 'ja',
+    created_at: data.created_at || createDateStamp(),
+    author: data.author || '',
     purpose: data.purpose || inferredInfo.purpose,
     audience: data.audience || inferredInfo.audience,
     prerequisites: data.prerequisites || inferredInfo.prerequisites,
@@ -936,6 +938,9 @@ function createEditableProject(project, orderedSteps) {
     schema_version: 1,
     saved_at: new Date().toISOString(),
     title: project.title || DEFAULT_PROJECT.title,
+    language: project.language === 'en' ? 'en' : 'ja',
+    created_at: project.created_at || createDateStamp(),
+    author: project.author || '',
     purpose: project.purpose || '',
     audience: project.audience || '',
     prerequisites: project.prerequisites || '',
@@ -1137,8 +1142,10 @@ async function createSharePointPastePackage(project, steps, images, zip) {
 
   const procedure = {
     title: project.title || DEFAULT_PROJECT.title,
+    language: project.language === 'en' ? 'en' : 'ja',
+    created_at: project.created_at || createDateStamp(),
+    author: project.author || '',
     category: '事務手順書',
-    created_at: createDateStamp(),
     purpose: project.purpose || '',
     audience: project.audience || '',
     prerequisites: project.prerequisites || '',
