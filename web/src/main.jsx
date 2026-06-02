@@ -732,6 +732,7 @@ function createWordStepListTable(steps) {
 }
 
 function createWordStepTable(step, markedImage) {
+  const wordImageSize = markedImage ? containWordImageSize(markedImage.width, markedImage.height, 360, 230) : null;
   const imageParagraph = markedImage
     ? new Paragraph({
         alignment: AlignmentType.CENTER,
@@ -739,7 +740,7 @@ function createWordStepTable(step, markedImage) {
           new ImageRun({
             type: 'png',
             data: dataUrlToUint8Array(markedImage.dataUrl),
-            transformation: containSize(markedImage.width, markedImage.height, 360, 230)
+            transformation: wordImageSize
           })
         ]
       })
@@ -754,15 +755,24 @@ function createWordStepTable(step, markedImage) {
       new TableRow({
         children: [
           new TableCell({
-            columnSpan: 2,
+            width: { size: 18, type: WidthType.PERCENTAGE },
             shading: { fill: 'eff6ff' },
             margins: WORD_CELL_MARGINS,
             children: [
               new Paragraph({
                 children: [
-                  new TextRun({ text: `Step ${step.step_no}`, bold: true, color: '1d4ed8', size: 24 }),
-                  new TextRun({ text: `  ${getStepTitle(step)}`, bold: true, color: '111827', size: 24 })
+                  new TextRun({ text: `Step ${step.step_no}`, bold: true, color: '1d4ed8', size: 24 })
                 ]
+              })
+            ]
+          }),
+          new TableCell({
+            width: { size: 82, type: WidthType.PERCENTAGE },
+            shading: { fill: 'eff6ff' },
+            margins: WORD_CELL_MARGINS,
+            children: [
+              new Paragraph({
+                children: [new TextRun({ text: getStepTitle(step), bold: true, color: '111827', size: 24 })]
               })
             ]
           })
@@ -832,11 +842,14 @@ function wordHeaderCell(text) {
 }
 
 function wordCell(text, options = {}) {
-  return new TableCell({
-    width: options.width ? { size: options.width, type: WidthType.PERCENTAGE } : undefined,
+  const cellOptions = {
     margins: WORD_CELL_MARGINS,
     children: [wordText(text, options)]
-  });
+  };
+  if (options.width) {
+    cellOptions.width = { size: options.width, type: WidthType.PERCENTAGE };
+  }
+  return new TableCell(cellOptions);
 }
 
 function wordLabel(text) {
@@ -847,8 +860,7 @@ function wordLabel(text) {
 }
 
 function wordText(text, options = {}) {
-  return new Paragraph({
-    alignment: options.alignment,
+  const paragraphOptions = {
     children: [
       new TextRun({
         text: String(text || ''),
@@ -858,7 +870,11 @@ function wordText(text, options = {}) {
       })
     ],
     spacing: { after: options.after ?? 60 }
-  });
+  };
+  if (options.alignment) {
+    paragraphOptions.alignment = options.alignment;
+  }
+  return new Paragraph(paragraphOptions);
 }
 
 function spacerParagraph(after = 120) {
@@ -866,6 +882,14 @@ function spacerParagraph(after = 120) {
     children: [new TextRun({ text: '' })],
     spacing: { after }
   });
+}
+
+function containWordImageSize(sourceWidth, sourceHeight, maxWidth, maxHeight) {
+  const size = containSize(sourceWidth, sourceHeight, maxWidth, maxHeight);
+  return {
+    width: Math.max(1, Math.round(size.w)),
+    height: Math.max(1, Math.round(size.h))
+  };
 }
 
 function normalizeProject(data, recordingId = 'recording_1') {
