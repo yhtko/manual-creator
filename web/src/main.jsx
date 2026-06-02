@@ -563,130 +563,146 @@ function App() {
             <button type="button" onClick={exportProjectJson} disabled={orderedSteps.length === 0}>
               {text.jsonSave}
             </button>
-            <button type="button" onClick={exportAiContextJson} disabled={orderedSteps.length === 0}>
-              {text.aiContextExport}
-            </button>
             <button type="button" onClick={exportPowerPoint} disabled={orderedSteps.length === 0}>
               {text.pptExport}
             </button>
           </div>
         </header>
 
-        <section className="document-info">
-          <label>
-            {text.language}
-            <select value={language} onChange={(event) => updateProjectInfo('language', event.target.value)}>
-              <option value="ja">{text.japanese}</option>
-              <option value="en">{text.english}</option>
-            </select>
-          </label>
-          <label>
-            {text.createdAt}
-            <input
-              type="date"
-              value={project.created_at || ''}
-              onChange={(event) => updateProjectInfo('created_at', event.target.value)}
-            />
-          </label>
-          <label>
-            {text.author}
-            <input value={project.author || ''} onChange={(event) => updateProjectInfo('author', event.target.value)} />
-          </label>
-          <label>
-            {text.purpose}
-            <textarea
-              value={project.purpose || ''}
-              onChange={(event) => updateProjectInfo('purpose', event.target.value)}
-            />
-          </label>
-          <label>
-            {text.audience}
-            <textarea
-              value={project.audience || ''}
-              onChange={(event) => updateProjectInfo('audience', event.target.value)}
-            />
-          </label>
-          <label>
-            {text.prerequisites}
-            <textarea
-              value={project.prerequisites || ''}
-              onChange={(event) => updateProjectInfo('prerequisites', event.target.value)}
-            />
-          </label>
-          <label>
-            {text.completion}
-            <textarea
-              value={project.completion || ''}
-              onChange={(event) => updateProjectInfo('completion', event.target.value)}
-            />
-          </label>
-        </section>
+        <section className="setup-panels">
+          <details className="settings-panel" open>
+            <summary>{text.jsonImport} / {text.videoImport}</summary>
+            <div className="settings-panel-body">
+              <section className="import-panel">
+                <label>
+                  {text.jsonImport}
+                  <input type="file" accept="application/json,.json" onChange={(event) => importProject(event.target.files[0])} />
+                </label>
+                <label>
+                  {text.jsonAppend}
+                  <input type="file" accept="application/json,.json" onChange={(event) => appendProject(event.target.files[0])} />
+                </label>
+                <label>
+                  {text.videoImport}
+                  <input type="file" accept="video/webm,.webm" onChange={(event) => importVideo(event.target.files[0])} />
+                </label>
+                <label>
+                  {text.pngImport}
+                  <input type="file" accept="image/png" multiple onChange={(event) => importImages(event.target.files)} />
+                </label>
+                <label>
+                  {text.aiResultImport}
+                  <input type="file" accept="application/json,.json" onChange={(event) => importAiResult(event.target.files[0])} />
+                </label>
+                {videoStatus ? <p className="import-status">{videoStatus}</p> : null}
+              </section>
+            </div>
+          </details>
 
-        <section className="ai-settings-panel">
-          <div className="section-heading">{text.aiSettings}</div>
-          <label>
-            {text.aiProvider}
-            <select value={aiSettings.provider} onChange={(event) => updateAiSettings({ provider: event.target.value })}>
-              <option value="openai">OpenAI</option>
-              <option value="claude">Claude</option>
-            </select>
-          </label>
-          <label>
-            {text.aiModel}
-            <input
-              value={aiSettings.model}
-              placeholder="model name"
-              onChange={(event) => updateAiSettings({ model: event.target.value })}
-            />
-          </label>
-          <label>
-            {text.aiApiKey}
-            <input
-              type="password"
-              value={aiSettings.apiKey}
-              autoComplete="off"
-              onChange={(event) => updateAiSettings({ apiKey: event.target.value })}
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={aiSettings.saveToDevice}
-              onChange={(event) => updateAiSettings({ saveToDevice: event.target.checked })}
-            />
-            <span>{text.saveApiKey}</span>
-          </label>
-          <div className="ai-action-row">
-            <button type="button" onClick={generateAiDescriptions} disabled={orderedSteps.length === 0 || aiBusy}>
-              {text.aiGenerate}
-            </button>
-          </div>
-          <p className="field-note">{text.aiKeyNote}</p>
-          {aiStatus ? <p className="import-status">{aiStatus}</p> : null}
-        </section>
+          <details className="settings-panel">
+            <summary>{text.title} / {text.purpose}</summary>
+            <div className="settings-panel-body">
+              <section className="document-info">
+                <label>
+                  {text.language}
+                  <select value={language} onChange={(event) => updateProjectInfo('language', event.target.value)}>
+                    <option value="ja">{text.japanese}</option>
+                    <option value="en">{text.english}</option>
+                  </select>
+                </label>
+                <label>
+                  {text.createdAt}
+                  <input
+                    type="date"
+                    value={project.created_at || ''}
+                    onChange={(event) => updateProjectInfo('created_at', event.target.value)}
+                  />
+                </label>
+                <label>
+                  {text.author}
+                  <input value={project.author || ''} onChange={(event) => updateProjectInfo('author', event.target.value)} />
+                </label>
+                <label>
+                  {text.purpose}
+                  <textarea
+                    value={project.purpose || ''}
+                    onChange={(event) => updateProjectInfo('purpose', event.target.value)}
+                  />
+                </label>
+                <label>
+                  {text.audience}
+                  <textarea
+                    value={project.audience || ''}
+                    onChange={(event) => updateProjectInfo('audience', event.target.value)}
+                  />
+                </label>
+                <label>
+                  {text.prerequisites}
+                  <textarea
+                    value={project.prerequisites || ''}
+                    onChange={(event) => updateProjectInfo('prerequisites', event.target.value)}
+                  />
+                </label>
+                <label>
+                  {text.completion}
+                  <textarea
+                    value={project.completion || ''}
+                    onChange={(event) => updateProjectInfo('completion', event.target.value)}
+                  />
+                </label>
+              </section>
+            </div>
+          </details>
 
-        <section className="import-panel">
-          <label>
-            {text.jsonImport}
-            <input type="file" accept="application/json,.json" onChange={(event) => importProject(event.target.files[0])} />
-          </label>
-          <label>
-            {text.jsonAppend}
-            <input type="file" accept="application/json,.json" onChange={(event) => appendProject(event.target.files[0])} />
-          </label>
-          <label>
-            {text.videoImport}
-            <input type="file" accept="video/webm,.webm" onChange={(event) => importVideo(event.target.files[0])} />
-          </label>
-          <label>
-            {text.pngImport}
-            <input type="file" accept="image/png" multiple onChange={(event) => importImages(event.target.files)} />
-          </label>
-          <label>
-            {text.aiResultImport}
-            <input type="file" accept="application/json,.json" onChange={(event) => importAiResult(event.target.files[0])} />
-          </label>
-          {videoStatus ? <p className="import-status">{videoStatus}</p> : null}
+          <details className="settings-panel">
+            <summary>{text.aiSettings}</summary>
+            <div className="settings-panel-body">
+              <section className="ai-settings-panel">
+                <label>
+                  {text.aiProvider}
+                  <select value={aiSettings.provider} onChange={(event) => updateAiSettings({ provider: event.target.value })}>
+                    <option value="openai">OpenAI</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </label>
+                <label>
+                  {text.aiModel}
+                  <input
+                    value={aiSettings.model}
+                    placeholder="model name"
+                    onChange={(event) => updateAiSettings({ model: event.target.value })}
+                  />
+                </label>
+                <label>
+                  {text.aiApiKey}
+                  <input
+                    type="password"
+                    value={aiSettings.apiKey}
+                    autoComplete="off"
+                    onChange={(event) => updateAiSettings({ apiKey: event.target.value })}
+                  />
+                </label>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={aiSettings.saveToDevice}
+                    onChange={(event) => updateAiSettings({ saveToDevice: event.target.checked })}
+                  />
+                  <span>{text.saveApiKey}</span>
+                </label>
+                <div className="ai-action-row">
+                  <button type="button" onClick={generateAiDescriptions} disabled={orderedSteps.length === 0 || aiBusy}>
+                    {text.aiGenerate}
+                  </button>
+                  <button type="button" onClick={exportAiContextJson} disabled={orderedSteps.length === 0}>
+                    {text.aiContextExport}
+                  </button>
+                </div>
+                <p className="field-note">{text.aiKeyNote}</p>
+                {aiStatus ? <p className="import-status">{aiStatus}</p> : null}
+              </section>
+            </div>
+          </details>
         </section>
 
         <section className="steps">
@@ -1191,11 +1207,7 @@ function createAiContextProject(project, orderedSteps, images) {
           has_loaded_image: Boolean(getStepImage(images, step)),
           note: 'The web app can generate a marked screenshot from the recording; image binary is not embedded in this JSON.'
         },
-        click: {
-          x: step.x ?? null,
-          y: step.y ?? null,
-          viewport_width: step.viewport_width ?? null,
-          viewport_height: step.viewport_height ?? null,
+        click_timing: {
           timestamp_ms: step.timestamp_ms ?? null,
           captured_at: step.captured_at || ''
         },

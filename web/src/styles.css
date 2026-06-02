@@ -88,6 +88,37 @@ button:disabled {
   background: #2563eb;
 }
 
+.setup-panels {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-panel {
+  overflow: hidden;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.settings-panel summary {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 12px 14px;
+  color: #111827;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-panel summary:hover {
+  background: #f8fafc;
+}
+
+.settings-panel-body {
+  padding: 0 14px 14px;
+}
+
 .import-panel {
   border: 1px solid #dbe3ef;
   border-radius: 8px;
@@ -149,6 +180,15 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.settings-panel .import-panel,
+.settings-panel .document-info,
+.settings-panel .ai-settings-panel {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
 .section-heading {
   grid-column: 1 / -1;
   color: #111827;
@@ -178,7 +218,9 @@ button:disabled {
 }
 
 .ai-action-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
   align-items: end;
 }
 
@@ -352,5 +394,9 @@ textarea {
 
   .export-actions > * {
     flex: 1 1 180px;
+  }
+
+  .ai-action-row {
+    grid-template-columns: 1fr;
   }
 }
