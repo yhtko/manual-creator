@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Document, HeadingLevel, ImageRun, Packer, Paragraph, TextRun } from 'docx';
 import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
 import './styles.css';
 
@@ -354,6 +355,32 @@ function App() {
     exportProjectJson();
   }
 
+  async function exportSharePointZip() {
+    const htmlRecordingDataUrls =
+      Object.keys(recordingDataUrls).length > 0 ? recordingDataUrls : recordingDataUrl ? { recording_1: recordingDataUrl } : {};
+    const zip = new JSZip();
+    const assets = zip.folder('assets');
+    const recordingFileNames = {};
+
+    for (const [recordingId, dataUrl] of Object.entries(htmlRecordingDataUrls)) {
+      const step = orderedSteps.find((item) => (item.recording_id || 'recording_1') === recordingId) || {};
+      const fileName = safeAssetFileName(step.recording_file || project.recording_file || `${recordingId}.webm`, `${recordingId}.webm`);
+      recordingFileNames[recordingId] = `assets/${fileName}`;
+      assets.file(fileName, dataUrlToUint8Array(dataUrl));
+    }
+
+    const htmlSteps = await createExternalAssetHtmlSteps(orderedSteps, images, assets, recordingFileNames);
+    const html = createManualHtml(project, orderedSteps, htmlSteps, '');
+    zip.file('index.html', html);
+    zip.file(
+      `${safeFileName(project.title || 'manual')}-project.json`,
+      JSON.stringify(createEditableProject(project, orderedSteps), null, 2)
+    );
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    saveAs(blob, `${safeFileName(project.title || 'manual')}-sharepoint-${createFileStamp()}.zip`);
+  }
+
   function exportProjectJson() {
     const editableProject = createEditableProject(project, orderedSteps);
     const blob = new Blob([JSON.stringify(editableProject, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -386,6 +413,9 @@ function App() {
             </button>
             <button type="button" onClick={exportHtml} disabled={orderedSteps.length === 0}>
               HTML出力
+            </button>
+            <button type="button" onClick={exportSharePointZip} disabled={orderedSteps.length === 0}>
+              SharePoint用ZIP
             </button>
             <button type="button" onClick={exportProjectJson} disabled={orderedSteps.length === 0}>
               編集JSON保存
@@ -712,6 +742,40 @@ async function createGroupedHtmlSteps(steps, images, recordingDataUrls) {
   return html;
 }
 
+async function createExternalAssetHtmlSteps(steps, images, assetsFolder, recordingFileNames) {
+  const groups = createHtmlStepGroups(steps);
+  const html = [];
+
+  for (const group of groups) {
+    const recordingId = group.steps[0]?.recording_id || 'recording_1';
+    if (group.type === 'video' && recordingFileNames[recordingId]) {
+      const posterAsset = await addMarkedImageAsset(
+        assetsFolder,
+        group.steps[0],
+        images,
+        `group_${String(group.steps[0].step_no).padStart(3, '0')}_${String(group.steps[group.steps.length - 1].step_no).padStart(3, '0')}.png`
+      );
+      html.push(createExternalVideoGroupHtml(group, recordingFileNames[recordingId], posterAsset));
+      continue;
+    }
+
+    const step = group.steps[0];
+    const imageAsset = await addMarkedImageAsset(assetsFolder, step, images, `step_${String(step.step_no).padStart(3, '0')}.png`);
+    html.push(createExternalImageStepHtml(step, imageAsset));
+  }
+
+  return html;
+}
+
+async function addMarkedImageAsset(assetsFolder, step, images, fileName) {
+  const markedImage = await createMarkedImage(step, getStepImage(images, step));
+  if (!markedImage) return null;
+
+  const safeName = safeAssetFileName(fileName, `step_${String(step.step_no).padStart(3, '0')}.png`);
+  assetsFolder.file(safeName, dataUrlToUint8Array(markedImage.dataUrl));
+  return `assets/${safeName}`;
+}
+
 function createHtmlStepGroups(steps) {
   const groups = [];
   let current = [];
@@ -766,6 +830,28 @@ function createImageStepHtml(step, markedImage) {
   `;
 }
 
+function createExternalImageStepHtml(step, imagePath) {
+  const imageHtml = imagePath
+    ? `<img class="step-image" src="${escapeHtml(imagePath)}" alt="Step ${step.step_no}">`
+    : '<div class="missing-image">画像がありません</div>';
+  const description = step.description || createDefaultDescription(step);
+
+  return `
+    <section class="step">
+      <div class="step-media">${imageHtml}</div>
+      <div class="step-content">
+        <p class="step-number">Step ${step.step_no}</p>
+        <h2>${escapeHtml(getStepTitle(step))}</h2>
+        <p class="description">${escapeHtml(description)}</p>
+        <dl>
+          <div><dt>画面</dt><dd>${escapeHtml(step.page_title || '-')}</dd></div>
+          <div><dt>対象</dt><dd>${escapeHtml(getStepTitle(step))}</dd></div>
+        </dl>
+      </div>
+    </section>
+  `;
+}
+
 function createVideoGroupHtml(group) {
   const first = group.steps[0];
   const last = group.steps[group.steps.length - 1];
@@ -791,6 +877,94 @@ function createVideoGroupHtml(group) {
       </div>
     </section>
   `;
+}
+
+function createExternalVideoGroupHtml(group, videoPath, posterPath) {
+  const first = group.steps[0];
+  const last = group.steps[group.steps.length - 1];
+  const recordingStartedAt = first.recording_started_at;
+  const start = Math.max(0, (Number(first.timestamp_ms) - Number(recordingStartedAt)) / 1000 - 0.35);
+  const end = Math.max(start + 0.8, (Number(last.timestamp_ms) - Number(recordingStartedAt)) / 1000 + 0.75);
+  const title = `${getStepTitle(first)}から${getStepTitle(last)}まで`;
+  const operations = group.steps
+    .map((step) => `<li>Step ${step.step_no}: ${escapeHtml(step.description || createDefaultDescription(step))}</li>`)
+    .join('');
+  const poster = posterPath ? ` poster="${escapeHtml(posterPath)}"` : '';
+
+  return `
+    <section class="step video-step">
+      <div class="step-media">
+        <video class="step-video" controls preload="metadata" src="${escapeHtml(videoPath)}#t=${start.toFixed(2)},${end.toFixed(2)}"${poster}></video>
+        ${
+          posterPath
+            ? `<p class="asset-note"><a href="${escapeHtml(videoPath)}">動画ファイルを開く</a> / <a href="${escapeHtml(posterPath)}">静止画を開く</a></p>`
+            : `<p class="asset-note"><a href="${escapeHtml(videoPath)}">動画ファイルを開く</a></p>`
+        }
+      </div>
+      <div class="step-content">
+        <p class="step-number">Step ${first.step_no}-${last.step_no}</p>
+        <h2>${escapeHtml(title)}</h2>
+        <p class="description">以下の順に操作します。</p>
+        <ol class="operation-list">${operations}</ol>
+      </div>
+    </section>
+  `;
+}
+
+function createManualHtml(project, orderedSteps, groupedHtmlSteps, script = '') {
+  return `<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(project.title || '作業手順書')}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #111827; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fafc; }
+    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; }
+    header { margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 28px; line-height: 1.35; }
+    .subtitle { margin: 8px 0 0; color: #64748b; font-size: 14px; }
+    .overview { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin: 20px 0 24px; }
+    .overview div { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: start; border: 1px solid #dbe3ef; border-radius: 8px; padding: 12px; background: #ffffff; }
+    .overview dt { margin: 0; color: #2563eb; font-size: 13px; font-weight: 800; white-space: nowrap; }
+    .overview dd { margin: 0; color: #111827; font-size: 14px; line-height: 1.7; }
+    .step { display: grid; grid-template-columns: minmax(280px, 54%) 1fr; gap: 20px; align-items: start; margin-top: 18px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 16px; background: #ffffff; break-inside: avoid; }
+    .step-image { display: block; width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .step-video { display: block; width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; background: #000000; }
+    .missing-image { display: grid; place-items: center; min-height: 220px; border: 1px dashed #cbd5e1; border-radius: 6px; color: #64748b; background: #f8fafc; }
+    .step-number { margin: 0 0 8px; color: #2563eb; font-size: 13px; font-weight: 800; }
+    h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.45; }
+    .description { margin: 0 0 16px; font-size: 16px; line-height: 1.8; }
+    dl { display: grid; gap: 8px; margin: 0; color: #475569; font-size: 13px; }
+    .step-content dl div { display: grid; grid-template-columns: 48px 1fr; gap: 8px; }
+    dt { font-weight: 800; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .operation-list { margin: 0; padding-left: 1.25rem; line-height: 1.8; }
+    .video-step { border-color: #bfdbfe; background: #f8fbff; }
+    .asset-note { margin: 8px 0 0; color: #64748b; font-size: 12px; line-height: 1.6; }
+    .asset-note a { color: #2563eb; }
+    @media (max-width: 760px) { .step, .overview { grid-template-columns: 1fr; } }
+    @media print { body { background: #ffffff; } main { max-width: none; padding: 0; } .step { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>${escapeHtml(project.title || '作業手順書')}</h1>
+      <p class="subtitle">${orderedSteps.length} ステップ</p>
+    </header>
+    <dl class="overview">
+      <div><dt>目的</dt><dd>${escapeHtml(project.purpose || '-')}</dd></div>
+      <div><dt>対象者</dt><dd>${escapeHtml(project.audience || '-')}</dd></div>
+      <div><dt>前提条件</dt><dd>${escapeHtml(project.prerequisites || '-')}</dd></div>
+      <div><dt>完了条件</dt><dd>${escapeHtml(project.completion || '-')}</dd></div>
+    </dl>
+    ${groupedHtmlSteps.join('\n')}
+  </main>
+  ${script}
+</body>
+</html>`;
 }
 
 async function createMarkedImage(step, imageDataUrl) {
@@ -988,6 +1162,15 @@ function legacyCreateDefaultDescription(step) {
 
 function safeFileName(value) {
   return value.replace(/[\\/:*?"<>|]/g, '_').trim() || 'manual';
+}
+
+function safeAssetFileName(value, fallback) {
+  const name = String(value || fallback || 'asset')
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[\\/:*?"<>|#%&{}$!'@+=`]/g, '_')
+    .trim();
+  return name || fallback || 'asset';
 }
 
 function createFileStamp() {
