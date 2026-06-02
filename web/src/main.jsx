@@ -380,61 +380,39 @@ function App() {
   async function exportPowerPoint() {
     const pptx = new pptxgen();
     pptx.layout = 'LAYOUT_WIDE';
-    pptx.author = '業務手順書自動作成ツール';
+    pptx.author = project.author || text.creator;
     pptx.subject = project.title;
     pptx.title = project.title;
+    pptx.company = 'Yahata';
+    pptx.lang = language === 'en' ? 'en-US' : 'ja-JP';
+
+    addPptCoverSlide(pptx, project, orderedSteps, text);
+    addPptOverviewSlide(pptx, project, orderedSteps, text);
 
     const chunkSize = Number(slidesPerPage);
     for (let i = 0; i < orderedSteps.length; i += chunkSize) {
       const slide = pptx.addSlide();
-      slide.background = { color: 'FFFFFF' };
-      slide.addText(project.title || '作業手順書', {
-        x: 0.4,
-        y: 0.2,
-        w: 12.5,
-        h: 0.35,
-        fontSize: 15,
-        bold: true,
-        color: '111827'
-      });
-
       const group = orderedSteps.slice(i, i + chunkSize);
-      const layout = getSlideLayout(group.length);
+      addPptSlideHeader(slide, project.title || text.defaultTitle, `${i + 1}-${i + group.length} / ${orderedSteps.length}`);
+
+      if (group.length === 1) {
+        const step = group[0];
+        const markedImage = await createMarkedImage(step, getStepImage(images, step));
+        addPptSingleStep(slide, step, markedImage, text);
+        addPptFooter(slide, project, text);
+        continue;
+      }
+
+      const layout = getPptCardLayout(group.length);
 
       for (let j = 0; j < group.length; j += 1) {
         const step = group[j];
         const box = layout[j];
         const markedImage = await createMarkedImage(step, getStepImage(images, step));
-
-        slide.addText(`Step ${step.step_no}`, {
-          x: box.x,
-          y: box.y,
-          w: box.w,
-          h: 0.25,
-          fontSize: 11,
-          bold: true,
-          color: '2563EB'
-        });
-
-        if (markedImage) {
-          addContainedImage(slide, markedImage, {
-            x: box.x,
-            y: box.y + 0.32,
-            w: box.w,
-            h: box.imageH
-          });
-        }
-
-        slide.addText(step.description || step.element_text || '', {
-          x: box.x,
-          y: box.y + 0.38 + box.imageH,
-          w: box.w,
-          h: 0.45,
-          fontSize: 9,
-          color: '111827',
-          fit: 'shrink'
-        });
+        addPptStepCard(slide, step, markedImage, box, text);
       }
+
+      addPptFooter(slide, project, text);
     }
 
     await pptx.writeFile({ fileName: `${safeFileName(project.title || 'manual')}.pptx` });
@@ -1441,6 +1419,392 @@ function drawMarker(context, x, y, stepNo) {
   context.textBaseline = 'middle';
   context.fillText(String(stepNo), labelX, labelY + 1);
   context.restore();
+}
+
+function addPptCoverSlide(pptx, project, steps, text) {
+  const slide = pptx.addSlide();
+  slide.background = { color: 'F8FAFC' };
+  slide.addShape('rect', {
+    x: 0,
+    y: 0,
+    w: 13.333,
+    h: 0.18,
+    fill: { color: '2563EB' },
+    line: { color: '2563EB' }
+  });
+  slide.addText(project.title || text.defaultTitle, {
+    x: 0.72,
+    y: 1.25,
+    w: 9.6,
+    h: 0.65,
+    fontFace: 'Yu Gothic',
+    fontSize: 30,
+    bold: true,
+    color: '111827',
+    margin: 0
+  });
+  slide.addText(`${steps.length} ${text.steps}`, {
+    x: 0.76,
+    y: 2.08,
+    w: 3.2,
+    h: 0.28,
+    fontFace: 'Yu Gothic',
+    fontSize: 12,
+    color: '64748B',
+    margin: 0
+  });
+  addPptInfoBand(slide, [
+    [text.createdAt, project.created_at || createDateStamp()],
+    [text.author, project.author || '-'],
+    [text.purpose, project.purpose || '-']
+  ]);
+}
+
+function addPptOverviewSlide(pptx, project, steps, text) {
+  const slide = pptx.addSlide();
+  slide.background = { color: 'FFFFFF' };
+  addPptSlideHeader(slide, text.stepList, `${steps.length} ${text.steps}`);
+
+  const rows = [
+    [text.purpose, project.purpose || '-'],
+    [text.audience, project.audience || '-'],
+    [text.prerequisites, project.prerequisites || '-'],
+    [text.completion, project.completion || '-']
+  ];
+  rows.forEach(([label, value], index) => {
+    const y = 0.9 + index * 0.68;
+    slide.addShape('roundRect', {
+      x: 0.65,
+      y,
+      w: 12.0,
+      h: 0.52,
+      rectRadius: 0.04,
+      fill: { color: index % 2 === 0 ? 'F8FAFC' : 'FFFFFF' },
+      line: { color: 'DBE3EF', width: 0.8 }
+    });
+    slide.addText(label, {
+      x: 0.9,
+      y: y + 0.14,
+      w: 1.4,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 9,
+      bold: true,
+      color: '2563EB',
+      margin: 0
+    });
+    slide.addText(value, {
+      x: 2.3,
+      y: y + 0.11,
+      w: 9.9,
+      h: 0.25,
+      fontFace: 'Yu Gothic',
+      fontSize: 10,
+      color: '111827',
+      fit: 'shrink',
+      margin: 0
+    });
+  });
+
+  const tableTop = 3.85;
+  slide.addText(text.stepList, {
+    x: 0.7,
+    y: tableTop,
+    w: 3.0,
+    h: 0.24,
+    fontFace: 'Yu Gothic',
+    fontSize: 13,
+    bold: true,
+    color: '111827',
+    margin: 0
+  });
+
+  steps.slice(0, 10).forEach((step, index) => {
+    const y = tableTop + 0.42 + index * 0.27;
+    slide.addText(`Step ${step.step_no}`, {
+      x: 0.75,
+      y,
+      w: 0.9,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 7.5,
+      bold: true,
+      color: '2563EB',
+      margin: 0
+    });
+    slide.addText(getStepTitle(step), {
+      x: 1.72,
+      y,
+      w: 2.5,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 7.5,
+      color: '111827',
+      fit: 'shrink',
+      margin: 0
+    });
+    slide.addText(step.description || createDefaultDescription(step), {
+      x: 4.25,
+      y,
+      w: 8.0,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 7.5,
+      color: '475569',
+      fit: 'shrink',
+      margin: 0
+    });
+  });
+  addPptFooter(slide, project, text);
+}
+
+function addPptSingleStep(slide, step, markedImage, text) {
+  slide.addShape('roundRect', {
+    x: 0.55,
+    y: 0.88,
+    w: 7.35,
+    h: 5.65,
+    rectRadius: 0.04,
+    fill: { color: 'F8FAFC' },
+    line: { color: 'DBE3EF', width: 0.8 }
+  });
+  if (markedImage) {
+    addContainedImage(slide, markedImage, { x: 0.75, y: 1.08, w: 6.95, h: 5.25 });
+  } else {
+    slide.addText(text.imageMissing, {
+      x: 0.75,
+      y: 3.4,
+      w: 6.95,
+      h: 0.3,
+      align: 'center',
+      fontFace: 'Yu Gothic',
+      fontSize: 12,
+      color: '64748B'
+    });
+  }
+
+  slide.addShape('roundRect', {
+    x: 8.15,
+    y: 0.88,
+    w: 4.65,
+    h: 5.65,
+    rectRadius: 0.04,
+    fill: { color: 'FFFFFF' },
+    line: { color: 'DBE3EF', width: 0.8 }
+  });
+  slide.addText(`Step ${step.step_no}`, {
+    x: 8.45,
+    y: 1.2,
+    w: 1.2,
+    h: 0.24,
+    fontFace: 'Yu Gothic',
+    fontSize: 12,
+    bold: true,
+    color: '2563EB',
+    margin: 0
+  });
+  slide.addText(getStepTitle(step), {
+    x: 8.45,
+    y: 1.58,
+    w: 3.9,
+    h: 0.45,
+    fontFace: 'Yu Gothic',
+    fontSize: 17,
+    bold: true,
+    color: '111827',
+    fit: 'shrink',
+    margin: 0
+  });
+  slide.addText(step.description || createDefaultDescription(step), {
+    x: 8.45,
+    y: 2.28,
+    w: 3.95,
+    h: 1.05,
+    fontFace: 'Yu Gothic',
+    fontSize: 13,
+    color: '111827',
+    fit: 'shrink',
+    margin: 0.04,
+    breakLine: false
+  });
+  addPptMeta(slide, step, text, 8.45, 3.65, 3.95);
+}
+
+function addPptStepCard(slide, step, markedImage, box, text) {
+  slide.addShape('roundRect', {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    rectRadius: 0.04,
+    fill: { color: 'FFFFFF' },
+    line: { color: 'DBE3EF', width: 0.8 }
+  });
+  slide.addText(`Step ${step.step_no}`, {
+    x: box.x + 0.18,
+    y: box.y + 0.14,
+    w: 0.9,
+    h: 0.18,
+    fontFace: 'Yu Gothic',
+    fontSize: 8,
+    bold: true,
+    color: '2563EB',
+    margin: 0
+  });
+  slide.addText(getStepTitle(step), {
+    x: box.x + 1.0,
+    y: box.y + 0.13,
+    w: box.w - 1.25,
+    h: 0.2,
+    fontFace: 'Yu Gothic',
+    fontSize: 9,
+    bold: true,
+    color: '111827',
+    fit: 'shrink',
+    margin: 0
+  });
+  if (markedImage) {
+    addContainedImage(slide, markedImage, {
+      x: box.x + 0.18,
+      y: box.y + 0.48,
+      w: box.imageW,
+      h: box.imageH
+    });
+  }
+  slide.addText(step.description || createDefaultDescription(step), {
+    x: box.x + box.imageW + 0.38,
+    y: box.y + 0.5,
+    w: box.w - box.imageW - 0.58,
+    h: box.imageH,
+    fontFace: 'Yu Gothic',
+    fontSize: 8.5,
+    color: '111827',
+    fit: 'shrink',
+    margin: 0.03
+  });
+}
+
+function addPptSlideHeader(slide, title, meta) {
+  slide.addShape('rect', {
+    x: 0,
+    y: 0,
+    w: 13.333,
+    h: 0.12,
+    fill: { color: '2563EB' },
+    line: { color: '2563EB' }
+  });
+  slide.addText(title, {
+    x: 0.55,
+    y: 0.28,
+    w: 9.4,
+    h: 0.26,
+    fontFace: 'Yu Gothic',
+    fontSize: 15,
+    bold: true,
+    color: '111827',
+    fit: 'shrink',
+    margin: 0
+  });
+  slide.addText(meta, {
+    x: 10.7,
+    y: 0.31,
+    w: 2.1,
+    h: 0.18,
+    align: 'right',
+    fontFace: 'Yu Gothic',
+    fontSize: 8,
+    color: '64748B',
+    margin: 0
+  });
+}
+
+function addPptFooter(slide, project, text) {
+  slide.addText(`${text.createdAt}: ${project.created_at || createDateStamp()}   ${text.author}: ${project.author || '-'}`, {
+    x: 0.55,
+    y: 7.08,
+    w: 7.2,
+    h: 0.16,
+    fontFace: 'Yu Gothic',
+    fontSize: 7,
+    color: '94A3B8',
+    margin: 0
+  });
+}
+
+function addPptInfoBand(slide, rows) {
+  rows.forEach(([label, value], index) => {
+    const y = 3.05 + index * 0.5;
+    slide.addText(label, {
+      x: 0.78,
+      y,
+      w: 1.2,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 8.5,
+      bold: true,
+      color: '2563EB',
+      margin: 0
+    });
+    slide.addText(value, {
+      x: 2.05,
+      y,
+      w: 8.8,
+      h: 0.2,
+      fontFace: 'Yu Gothic',
+      fontSize: 9.5,
+      color: '111827',
+      fit: 'shrink',
+      margin: 0
+    });
+  });
+}
+
+function addPptMeta(slide, step, text, x, y, w) {
+  const rows = [
+    [text.screen, step.page_title || '-'],
+    [text.target, step.element_text || step.aria_label || getStepTitle(step)],
+    [text.url, step.url || '-']
+  ];
+  rows.forEach(([label, value], index) => {
+    const rowY = y + index * 0.36;
+    slide.addText(label, {
+      x,
+      y: rowY,
+      w: 0.75,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 7,
+      bold: true,
+      color: '64748B',
+      margin: 0
+    });
+    slide.addText(value, {
+      x: x + 0.8,
+      y: rowY,
+      w: w - 0.85,
+      h: 0.18,
+      fontFace: 'Yu Gothic',
+      fontSize: 7,
+      color: '475569',
+      fit: 'shrink',
+      margin: 0
+    });
+  });
+}
+
+function getPptCardLayout(count) {
+  if (count === 2) {
+    return [
+      { x: 0.6, y: 0.95, w: 6.05, h: 5.6, imageW: 3.35, imageH: 4.55 },
+      { x: 6.85, y: 0.95, w: 6.05, h: 5.6, imageW: 3.35, imageH: 4.55 }
+    ];
+  }
+  return [
+    { x: 0.55, y: 0.9, w: 6.1, h: 2.85, imageW: 2.95, imageH: 2.05 },
+    { x: 6.85, y: 0.9, w: 6.1, h: 2.85, imageW: 2.95, imageH: 2.05 },
+    { x: 0.55, y: 3.9, w: 6.1, h: 2.85, imageW: 2.95, imageH: 2.05 },
+    { x: 6.85, y: 3.9, w: 6.1, h: 2.85, imageW: 2.95, imageH: 2.05 }
+  ];
 }
 
 function getSlideLayout(count) {
